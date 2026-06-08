@@ -384,7 +384,7 @@ export default function Projector() {
         <div 
           style={{
             zIndex: 50,
-            fontSize: '35px',
+            fontSize: `${state.weatherFontSize || 35}px`,
             color: '#ef4444',
             fontWeight: 800,
             fontFamily: 'system-ui, -apple-system, sans-serif',

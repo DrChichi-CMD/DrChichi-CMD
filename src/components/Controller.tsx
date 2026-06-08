@@ -276,6 +276,22 @@ export default function Controller() {
   const [isProjectorConnected, setIsProjectorConnected] = useState<boolean>(false);
   const [showPopupWarning, setShowPopupWarning] = useState<boolean>(false);
   const projectorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const projectorWindowRef = useRef<Window | null>(null);
+
+  // Automatically close projector window if the controller app is closed
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
+        projectorWindowRef.current.close();
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('unload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('unload', handleBeforeUnload);
+    };
+  }, []);
 
   // Operator UI states
   const [searchQuery, setSearchQuery] = useState('');
@@ -390,7 +406,21 @@ export default function Controller() {
   const [updateProgress, setUpdateProgress] = useState(0);
   const [updateLogs, setUpdateLogs] = useState<string[]>([]);
   const [swVersion, setSwVersion] = useState(() => {
-    return localStorage.getItem('swVersion') || 'v1.0.0-Stable';
+    const saved = localStorage.getItem('swVersion');
+    if (!saved || saved.toLowerCase().includes('v4.') || saved.toLowerCase().includes('v4.3')) {
+      localStorage.setItem('swVersion', 'V1.0.0');
+      return 'V1.0.0';
+    }
+    // Standardize to V1.x label
+    if (saved === 'v1.0.0-Stable') return 'V1.0.0';
+    return saved;
+  });
+  const [pendingUpdateFile, setPendingUpdateFile] = useState<File | null>(null);
+  const [updateModules, setUpdateModules] = useState({
+    clima: true,
+    autoFontSize: true,
+    skins: true,
+    lyricsPatch: true
   });
 
   // Save changes automatically
@@ -430,24 +460,48 @@ export default function Controller() {
   const handleUpdateFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setPendingUpdateFile(file);
+  };
 
+  const handleProceedWithUpdate = () => {
+    if (!pendingUpdateFile) return;
+    const file = pendingUpdateFile;
     setUpdateFileName(file.name);
     setIsUpdating(true);
     setUpdateProgress(0);
     setUpdateLogs([
       `⚡ Leyendo paquete de actualización local: "${file.name}" (${(file.size / (1024 * 1024)).toFixed(2)} MB)`,
       `🔍 Escaneando firma digital y validez del archivo local...`,
-      `📦 Archivo validado. Iniciando proceso de descompresión...`
+      `📦 Archivo de parche validado. Analizando manifiesto de módulos seleccionados...`
     ]);
+
+    const activeList: string[] = [];
+    if (updateModules.clima) activeList.push('"clima-widget.tsx"');
+    if (updateModules.autoFontSize) activeList.push('"auto-font-size.tsx"');
+    if (updateModules.skins) activeList.push('"interface-skins-v2.json"');
+    if (updateModules.lyricsPatch) activeList.push('"lyrics-patch.json"');
 
     const steps = [
       { progress: 15, log: `🔌 Descomprimiendo '${file.name}' en la carpeta temporal de actualización...` },
-      { progress: 30, log: '⚙️ Buscando nuevos componentes de interfaz, consolas de operación y módulos de sistema...' },
-      { progress: 48, log: '📂 Archivos encontrados: "clima-widget.tsx", "auto-font-size.tsx", "interface-skins-v2.json", "lyrics-patch.json".' },
-      { progress: 65, log: '💅 Integrando nuevos botones, leyendas y ventanas de control en la Consola de Operación...' },
+      { progress: 30, log: '⚙️ Buscando nuevos componentes de interfaz descritos en la configuración del operador...' },
+      { 
+        progress: 48, 
+        log: activeList.length > 0 
+          ? `📂 Nuevos componentes seleccionados encontrados en el zip: ${activeList.join(', ')}.` 
+          : '📂 Ningún componente nuevo seleccionado. Forzando solo actualización del motor base...'
+      },
+      { 
+        progress: 65, 
+        log: updateModules.skins 
+          ? '💅 Integrando nuevos botones estilizados, combos de color y nuevos esquemas estéticos...' 
+          : '⚙️ Omitiendo nuevos skins estéticos (mantenidos esquemas previos). Registrando parámetros base...' 
+      },
       { progress: 78, log: '🔐 Verificando aislamiento de datos locales del usuario (canciones e imágenes)...' },
       { progress: 88, log: `💾 Resguardando exitosamente ${songs.length} canciones locales y ${backgrounds.length} fondos en base de datos independiente (Sin Pérdidas).` },
-      { progress: 95, log: '🚀 Forzando render de interfaz y activando nuevos módulos de Clima y Autoajuste...' },
+      { 
+        progress: 95, 
+        log: `🚀 Forzando render de interfaz y activando nuevos módulos autorizados (${updateModules.clima ? 'Clima' : 'Sin clima'}, ${updateModules.autoFontSize ? 'Autoajuste' : 'Sin autoajuste'})...` 
+      },
       { progress: 100, log: `🎉 ¡Actualización finalizada con éxito! Sistema general al día (Ver: v1.0.2-Stable).` }
     ];
 
@@ -477,15 +531,18 @@ export default function Controller() {
           // 3. Activar funciones de nueva generación recién instaladas
           updateState(prev => ({
             ...prev,
-            isAutoFontSize: true,           // Habilitamos autoajustable al tamaño por defecto tras actualizar
-            showWeatherOnProjector: true,   // Activamos el Clima al Aire para demostrar su funcionamiento
+            ...(updateModules.autoFontSize ? { isAutoFontSize: true } : {}),
+            ...(updateModules.clima ? { showWeatherOnProjector: true } : {}),
           }));
 
-          // 4. Establecer un skin por defecto vistoso tras la actualización
-          setActiveSkin('celestial');
-          localStorage.setItem('church_controller_skin', 'celestial');
+          // 4. Establecer un skin por defecto vistoso tras la actualización si se autorizó
+          if (updateModules.skins) {
+            setActiveSkin('celestial');
+            localStorage.setItem('church_controller_skin', 'celestial');
+          }
 
           setIsUpdating(false);
+          setPendingUpdateFile(null);
           setSwVersion('v1.0.2-Stable');
           localStorage.setItem('swVersion', 'v1.0.2-Stable');
         }
@@ -1691,12 +1748,15 @@ export default function Controller() {
       const win = window.open('?mode=projector', 'church_projector', 'width=1280,height=720,menubar=no,toolbar=no,status=no');
       if (!win || win.closed || typeof win.closed === 'undefined') {
         setShowPopupWarning(true);
+        projectorWindowRef.current = null;
       } else {
         setShowPopupWarning(false);
+        projectorWindowRef.current = win;
       }
     } catch (e) {
       console.error('Error opening projector window:', e);
       setShowPopupWarning(true);
+      projectorWindowRef.current = null;
     }
   };
 
@@ -3021,6 +3081,78 @@ export default function Controller() {
               </div>
             )}
 
+            {/* ESTADO DEL TIEMPO (WEATHER DISPLAY) - ACTUALIZACIÓN AUTOMÁTICA */}
+            <div className="bg-zinc-950/40 p-2.5 rounded border border-zinc-900 space-y-1.5 mt-0.5 font-sans">
+              <div className="flex items-center justify-between border-b border-zinc-900/60 pb-1">
+                <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1">
+                  ⛅ ESTADO DEL TIEMPO (CLIMA)
+                </span>
+                <span className="text-[6.5px] font-mono text-zinc-650 bg-black/30 px-1 py-0.2 rounded">
+                  AUTO-UPDATE
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 px-0.5">
+                {/* Weather details presentation */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xl leading-none animate-pulse" title="Condición climática">
+                    {state.weatherDesc ? state.weatherDesc.split(' ')[0] : '☀️'}
+                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-black text-zinc-200 font-mono tracking-tight">
+                      {state.weatherTemp || 'Midiendo...'}
+                    </span>
+                    <span className="text-[7.5px] text-zinc-500 font-bold uppercase leading-tight truncate max-w-[130px]">
+                      {state.weatherDesc ? state.weatherDesc.substring(state.weatherDesc.indexOf(' ') + 1) : 'Sincronizando...'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Small toggle button to project weather - Styled in precise RED color theme */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => updateState(prev => ({ ...prev, showWeatherOnProjector: !prev.showWeatherOnProjector }))}
+                    className={`px-2 py-1 rounded border text-[8px] font-black tracking-wider uppercase transition-all duration-150 flex items-center gap-1 cursor-pointer ${
+                      state.showWeatherOnProjector
+                        ? 'bg-red-950 border-red-500 text-red-500 hover:text-red-400 shadow shadow-red-500/10'
+                        : 'bg-[#1a1a1c]/80 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                    }`}
+                    title="Mostrar/ocultar temperatura en el proyector principal (arriba derecha en rojo)"
+                  >
+                    <span>{state.showWeatherOnProjector ? '📺 AL AIRE' : 'PROYECTAR'}</span>
+                    <div className={`w-1.5 h-1.5 rounded-full ${state.showWeatherOnProjector ? 'bg-red-500 animate-pulse' : 'bg-zinc-600'}`} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Dynamic live font-size buttons for real-time weather font scale */}
+              <div className="flex items-center justify-between gap-2 px-0.5 border-t border-zinc-900/60 pt-1.5 mt-1">
+                <span className="text-[7.5px] font-bold text-zinc-500 uppercase tracking-wider">TAMAÑO CLIMA EN PANTALLA:</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => updateState(prev => ({ ...prev, weatherFontSize: Math.max(12, (prev.weatherFontSize || 35) - 3) }))}
+                    className="py-0.5 px-1.5 bg-[#1a1a1c]/80 border border-zinc-800 hover:border-zinc-700 hover:text-white text-zinc-400 rounded text-[8px] font-bold cursor-pointer transition active:scale-95"
+                    title="Achicar tamaño de letra de clima"
+                  >
+                    C-
+                  </button>
+                  <span className="font-mono text-[8px] text-zinc-300 font-bold min-w-[28px] text-center bg-black/40 py-0.5 px-0.5 rounded border border-zinc-900">
+                    {state.weatherFontSize || 35}px
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => updateState(prev => ({ ...prev, weatherFontSize: Math.min(125, (prev.weatherFontSize || 35) + 3) }))}
+                    className="py-0.5 px-1.5 bg-[#1a1a1c]/80 border border-zinc-800 hover:border-zinc-700 hover:text-white text-zinc-400 rounded text-[8px] font-bold cursor-pointer transition active:scale-95"
+                    title="Agrandar tamaño de letra de clima"
+                  >
+                    C+
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {/* GRUPO DE BOTONES: AUTOAJUSTABLE AL TAMAÑO & CONTROLES DE ESCALA */}
             <div className="bg-zinc-950/40 p-2 rounded border border-zinc-900 space-y-1.5 select-none font-sans mt-0.5">
               <span className="text-[8px] font-black text-cyan-400 block uppercase tracking-wider">
@@ -3077,52 +3209,6 @@ export default function Controller() {
               <div className="flex items-center justify-between text-[7px] text-zinc-500 px-1 font-bold">
                 <span>TAMAÑO ACTIVO EN PROYECTOR:</span>
                 <span className="font-mono text-zinc-350">{state.fontSize || 100}px</span>
-              </div>
-            </div>
-
-            {/* ESTADO DEL TIEMPO (WEATHER DISPLAY) - ACTUALIZACIÓN AUTOMÁTICA */}
-            <div className="bg-zinc-950/40 p-2.5 rounded border border-zinc-900 space-y-1.5 mt-0.5 font-sans">
-              <div className="flex items-center justify-between border-b border-zinc-900/60 pb-1">
-                <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1">
-                  ⛅ ESTADO DEL TIEMPO (CLIMA)
-                </span>
-                <span className="text-[6.5px] font-mono text-zinc-650 bg-black/30 px-1 py-0.2 rounded">
-                  AUTO-UPDATE
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 px-0.5">
-                {/* Weather details presentation */}
-                <div className="flex items-center gap-2">
-                  <span className="text-xl leading-none animate-pulse" title="Condición climática">
-                    {state.weatherDesc ? state.weatherDesc.split(' ')[0] : '☀️'}
-                  </span>
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-black text-zinc-200 font-mono tracking-tight">
-                      {state.weatherTemp || 'Midiendo...'}
-                    </span>
-                    <span className="text-[7.5px] text-zinc-500 font-bold uppercase leading-tight truncate max-w-[130px]">
-                      {state.weatherDesc ? state.weatherDesc.substring(state.weatherDesc.indexOf(' ') + 1) : 'Sincronizando...'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Small toggle button to project weather - Styled in precise RED color theme */}
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => updateState(prev => ({ ...prev, showWeatherOnProjector: !prev.showWeatherOnProjector }))}
-                    className={`px-2 py-1 rounded border text-[8px] font-black tracking-wider uppercase transition-all duration-150 flex items-center gap-1 cursor-pointer ${
-                      state.showWeatherOnProjector
-                        ? 'bg-red-950 border-red-500 text-red-500 hover:text-red-400 shadow shadow-red-500/10'
-                        : 'bg-[#1a1a1c]/80 border-zinc-800 text-zinc-500 hover:text-zinc-300'
-                    }`}
-                    title="Mostrar/ocultar temperatura en el proyector principal (arriba derecha en rojo 35px)"
-                  >
-                    <span>{state.showWeatherOnProjector ? '📺 AL AIRE' : 'PROYECTAR'}</span>
-                    <div className={`w-1.5 h-1.5 rounded-full ${state.showWeatherOnProjector ? 'bg-red-500 animate-pulse' : 'bg-zinc-600'}`} />
-                  </button>
-                </div>
               </div>
             </div>
 
@@ -3497,7 +3583,7 @@ export default function Controller() {
                           accept=".zip,.json,.bin"
                         />
 
-                        {!isUpdating && (
+                        {!isUpdating && !pendingUpdateFile && (
                           <button
                             type="button"
                             onClick={handleUpdateSoftware}
@@ -3505,6 +3591,92 @@ export default function Controller() {
                           >
                             🚀 ABRIR CARPETA Y SUBIR PARCHE DE ACTUALIZACIÓN
                           </button>
+                        )}
+
+                        {pendingUpdateFile && !isUpdating && (
+                          <div className="bg-zinc-950 border border-indigo-500/40 p-2.5 rounded-lg space-y-2 font-sans animation-fade-in col-span-12 text-left">
+                            <div className="border-b border-zinc-900 pb-1 flex items-center justify-between">
+                              <span className="text-[8.5px] font-black text-indigo-400 uppercase tracking-wider">📦 Parche Cargado:</span>
+                              <span className="text-[8px] font-mono text-zinc-400 bg-zinc-900 px-1 py-0.5 rounded truncate max-w-[130px]" title={pendingUpdateFile.name}>
+                                {pendingUpdateFile.name}
+                              </span>
+                            </div>
+                            
+                            <p className="text-[7.5px] text-zinc-400 leading-normal">
+                              Seleccione cuáles de los <strong>módulos nuevos</strong> desea instalar. El motor base, la base de canciones y de fondos se actualizarán por completo:
+                            </p>
+                            
+                            <div className="space-y-1 bg-zinc-900/40 p-1.5 rounded border border-zinc-850">
+                              <label className="flex items-start gap-1.5 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={updateModules.clima}
+                                  onChange={(e) => setUpdateModules(prev => ({ ...prev, clima: e.target.checked }))}
+                                  className="mt-0.5 rounded border-zinc-800 text-indigo-500 focus:ring-0 cursor-pointer"
+                                />
+                                <div className="text-[8px] leading-tight">
+                                  <span className="font-bold text-zinc-200 block">⛅ Clima y Widget del Tiempo</span>
+                                  <span className="text-zinc-500 text-[7px]">Integra temperatura real programada e íconos en el proyector.</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-1.5 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={updateModules.autoFontSize}
+                                  onChange={(e) => setUpdateModules(prev => ({ ...prev, autoFontSize: e.target.checked }))}
+                                  className="mt-0.5 rounded border-zinc-800 text-indigo-500 focus:ring-0 cursor-pointer"
+                                />
+                                <div className="text-[8px] leading-tight">
+                                  <span className="font-bold text-zinc-200 block">📐 Auto-Ajuste Proporcionado</span>
+                                  <span className="text-zinc-550 text-[7px]">Ajusta el tamaño de letra en pantalla según la extensión del verso.</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-1.5 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={updateModules.skins}
+                                  onChange={(e) => setUpdateModules(prev => ({ ...prev, skins: e.target.checked }))}
+                                  className="mt-0.5 rounded border-zinc-800 text-indigo-500 focus:ring-0 cursor-pointer"
+                                />
+                                <div className="text-[8px] leading-tight">
+                                  <span className="font-bold text-zinc-200 block">🎨 Nuevos Esquemas & Skins</span>
+                                  <span className="text-zinc-550 text-[7px]">Agrega skins "Blanco Puro Redondeado" y "Gris y Carmesí".</span>
+                                </div>
+                              </label>
+
+                              <label className="flex items-start gap-1.5 cursor-pointer select-none">
+                                <input
+                                  type="checkbox"
+                                  checked={updateModules.lyricsPatch}
+                                  onChange={(e) => setUpdateModules(prev => ({ ...prev, lyricsPatch: e.target.checked }))}
+                                  className="mt-0.5 rounded border-zinc-800 text-indigo-500 focus:ring-0 cursor-pointer"
+                                />
+                                <div className="text-[8px] leading-tight">
+                                  <span className="font-bold text-zinc-200 block">📝 Parches de Letras Inteligentes</span>
+                                  <span className="text-zinc-550 text-[7px]">Estructuración recomendada de estrofas de máximo 5 renglones.</span>
+                                </div>
+                              </label>
+                            </div>
+
+                            <div className="flex gap-1 pt-1">
+                              <button
+                                type="button"
+                                onClick={() => setPendingUpdateFile(null)}
+                                className="flex-grow py-1 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-zinc-400 font-bold text-[8.5px] rounded uppercase cursor-pointer text-center"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleProceedWithUpdate}
+                                className="flex-grow py-1 bg-indigo-650 hover:bg-indigo-550 text-white font-extrabold text-[8.5px] rounded uppercase cursor-pointer text-center"
+                              >
+                                🚀 Proceder
+                              </button>
+                            </div>
+                          </div>
                         )}
 
                         {swVersion === 'v1.0.2-Stable' && !isUpdating && (

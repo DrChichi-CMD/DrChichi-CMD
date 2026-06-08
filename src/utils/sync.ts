@@ -46,6 +46,7 @@ export const INITIAL_STATE: ProjectorState = {
   showWeatherOnProjector: false,
   weatherTemp: '',
   weatherDesc: '',
+  weatherFontSize: 35,
   isAutoFontSize: false,
 };
 

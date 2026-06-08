@@ -69,6 +69,7 @@ export interface ProjectorState {
   showWeatherOnProjector?: boolean;
   weatherTemp?: string;
   weatherDesc?: string;
+  weatherFontSize?: number;
   isAutoFontSize?: boolean;
 }
 
