@@ -1,0 +1,6 @@
+{
+  "name": "Proyector para Iglesia",
+  "description": "Una aplicación práctica para proyectar letras de canciones y fondos en pantallas duales, optimizada para iglesias.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
