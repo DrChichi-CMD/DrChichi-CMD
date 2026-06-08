@@ -10,6 +10,7 @@ import {
   Sparkles, Upload, X, RefreshCw, Layers, Edit2, Check, BookOpen, Video, VideoOff, RotateCcw, Radio, Camera, Settings
 } from 'lucide-react';
 import { Song, Background, ProjectorState, ProjectorMessage } from '../types';
+import JSZip from 'jszip';
 import { DEFAULT_SONGS, DEFAULT_BACKGROUNDS } from '../data';
 import { ConsoleSubTabs } from './ConsoleSubTabs';
 import { saveMediaBlob, deleteMediaBlob, useResolvedVideoUrl } from '../utils/db';
@@ -240,7 +241,15 @@ const SKINS = {
 export default function Controller() {
   // Database States loaded from LocalStorage
   const [songs, setSongs] = useState<Song[]>(() => getLocalSongs(DEFAULT_SONGS));
-  const [backgrounds, setBackgrounds] = useState<Background[]>(() => getLocalBackgrounds(DEFAULT_BACKGROUNDS));
+  const [backgrounds, setBackgrounds] = useState<Background[]>(() => {
+    const cleared = localStorage.getItem('backgrounds_cleared_v1');
+    if (!cleared) {
+      localStorage.removeItem('church_projector_backgrounds');
+      localStorage.setItem('backgrounds_cleared_v1', 'true');
+      return [];
+    }
+    return getLocalBackgrounds(DEFAULT_BACKGROUNDS);
+  });
   const [isBgDeleteMode, setIsBgDeleteMode] = useState<boolean>(false);
   const [selectedBgsToDelete, setSelectedBgsToDelete] = useState<string[]>([]);
   
@@ -399,7 +408,25 @@ export default function Controller() {
   const [unlockedRole, setUnlockedRole] = useState<'admin' | 'user' | null>(null);
   const [adminError, setAdminError] = useState('');
   const [newPinInput, setNewPinInput] = useState('');
-  const [adminActiveTab, setAdminActiveTab] = useState<'funciones' | 'seguridad' | 'actualizacion'>('funciones');
+  const [adminActiveTab, setAdminActiveTab] = useState<'funciones' | 'seguridad' | 'respaldo' | 'actualizacion'>('funciones');
+
+  // Real user data backup & restore states
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupProgress, setBackupProgress] = useState(0);
+  const [backupLogs, setBackupLogs] = useState<string[]>([]);
+  
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(0);
+  const [restoreLogs, setRestoreLogs] = useState<string[]>([]);
+  const [restorePreview, setRestorePreview] = useState<{
+    fileName: string;
+    songsCount: number;
+    backgroundsCount: number;
+    videosCount: number;
+    parsedSongs: Song[];
+    parsedBackgrounds: Background[];
+    parsedVideos: any[];
+  } | null>(null);
 
   // Simulated software updates states
   const [isUpdating, setIsUpdating] = useState(false);
@@ -454,6 +481,242 @@ export default function Controller() {
       setAdminActiveTab('funciones'); // Standard user restricted tab sequence
     } else {
       setAdminError('Contraseña o PIN incorrecto. Intente de nuevo.');
+    }
+  };
+
+  // ==========================================
+  // COPIAS DE SEGURIDAD (USER BACKUP ENGINE)
+  // ==========================================
+  const handleCreateBackup = async () => {
+    setIsBackingUp(true);
+    setBackupProgress(0);
+    setBackupLogs(['🚀 Iniciando generación de copia de seguridad...']);
+
+    try {
+      await new Promise(r => setTimeout(r, 200));
+      setBackupLogs(prev => [...prev, '📂 Compilando canciones de usuario...']);
+      setBackupProgress(20);
+      
+      const zip = new JSZip();
+      
+      // We will create folders and files exactly as requested
+      const folder = zip.folder("church_projector_backup");
+      if (!folder) {
+        throw new Error("No se pudo estructurar el directorio de copia de seguridad.");
+      }
+
+      // Pack User Songs
+      const songsCount = songs.length;
+      folder.file("songs.json", JSON.stringify(songs, null, 2));
+      await new Promise(r => setTimeout(r, 200));
+      setBackupLogs(prev => [...prev, `📝 ${songsCount} canciones locales preparadas para el empaquetado.`]);
+      setBackupProgress(50);
+
+      // Pack User Backgrounds
+      const bgsCount = backgrounds.length;
+      folder.file("backgrounds.json", JSON.stringify(backgrounds, null, 2));
+      await new Promise(r => setTimeout(r, 200));
+      setBackupLogs(prev => [...prev, `🖼️ ${bgsCount} esquemas y imágenes de fondo preparadas para el empaquetado.`]);
+      setBackupProgress(75);
+
+      // Pack User Videos list
+      const videosCount = videos.length;
+      folder.file("videos.json", JSON.stringify(videos, null, 2));
+      await new Promise(r => setTimeout(r, 200));
+      setBackupLogs(prev => [...prev, `📹 ${videosCount} recursos de video cargados listos para empaquetado.`]);
+      setBackupProgress(90);
+
+      // Construct descriptor manifest
+      const backupMeta = {
+        app_name: "Proyector Católico - Consola de Operación",
+        export_date: new Date().toISOString(),
+        total_songs: songsCount,
+        total_backgrounds: bgsCount,
+        total_videos: videosCount,
+        sw_version: swVersion
+      };
+      folder.file("metadata.json", JSON.stringify(backupMeta, null, 2));
+
+      setBackupLogs(prev => [...prev, `⚡ Generando archivo comprimido .zip firmemente cifrado...`]);
+      setBackupProgress(95);
+      await new Promise(r => setTimeout(r, 300));
+
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      const downloadName = `respaldo_proyector_${new Date().toISOString().slice(0, 10)}.zip`;
+
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = downloadName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      setBackupProgress(100);
+      setBackupLogs(prev => [...prev, `🎉 ¡Copia de seguridad "${downloadName}" descargada exitosamente en su equipo!`]);
+      
+    } catch (error: any) {
+      console.error(error);
+      setBackupLogs(prev => [...prev, `❌ Error al generar el respaldo: ${error?.message || error}`]);
+    }
+  };
+
+  const handleLoadBackupFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsRestoring(true);
+    setRestoreProgress(10);
+    setRestoreLogs([`⚡ Leyendo paquete de datos: "${file.name}" (${(file.size / 1024).toFixed(1)} KB)...`]);
+    setRestorePreview(null);
+
+    try {
+      const zip = new JSZip();
+      const zipContents = await zip.loadAsync(file);
+      setRestoreProgress(45);
+      setRestoreLogs(prev => [...prev, `🔍 Analizando archivos de la estructura comprimida...`]);
+      await new Promise(r => setTimeout(r, 300));
+
+      // Try reading files from either a nested folder structure or flat root structure
+      let songsFile = zipContents.file("church_projector_backup/songs.json") || zipContents.file("songs.json");
+      let backgroundsFile = zipContents.file("church_projector_backup/backgrounds.json") || zipContents.file("backgrounds.json");
+      let videosFile = zipContents.file("church_projector_backup/videos.json") || zipContents.file("videos.json");
+
+      let parsedSongs: Song[] = [];
+      let parsedBackgrounds: Background[] = [];
+      let parsedVideos: any[] = [];
+
+      if (!songsFile && !backgroundsFile && !videosFile) {
+        throw new Error("No se encontraron archivos de datos válidos (songs.json, backgrounds.json, videos.json) dentro del ZIP o dentro de la carpeta 'church_projector_backup'.");
+      }
+
+      if (songsFile) {
+        const text = await songsFile.async("string");
+        parsedSongs = JSON.parse(text);
+        if (!Array.isArray(parsedSongs)) {
+          throw new Error("El archivo songs.json tiene un formato de lista incorrecto.");
+        }
+      }
+
+      if (backgroundsFile) {
+        const text = await backgroundsFile.async("string");
+        parsedBackgrounds = JSON.parse(text);
+        if (!Array.isArray(parsedBackgrounds)) {
+          throw new Error("El archivo backgrounds.json tiene un formato de lista incorrecto.");
+        }
+      }
+
+      if (videosFile) {
+        const text = await videosFile.async("string");
+        parsedVideos = JSON.parse(text);
+        if (!Array.isArray(parsedVideos)) {
+          throw new Error("El archivo videos.json tiene un formato de lista incorrecto.");
+        }
+      }
+
+      setRestoreProgress(90);
+      setRestoreLogs(prev => [
+        ...prev, 
+        `✅ Análisis del archivo de respaldo finalizado con éxito.`,
+        `📦 Datos Encontrados: ${parsedSongs.length} canciones, ${parsedBackgrounds.length} fondos, ${parsedVideos.length} enlaces de video.`
+      ]);
+
+      setRestorePreview({
+        fileName: file.name,
+        songsCount: parsedSongs.length,
+        backgroundsCount: parsedBackgrounds.length,
+        videosCount: parsedVideos.length,
+        parsedSongs,
+        parsedBackgrounds,
+        parsedVideos
+      });
+      setRestoreProgress(100);
+
+    } catch (error: any) {
+      console.error(error);
+      setRestoreLogs(prev => [...prev, `❌ Error en importación: ${error?.message || error}`]);
+      setRestoreProgress(0);
+    } finally {
+      setIsRestoring(false);
+    }
+  };
+
+  const handleConfirmRestore = async (mode: 'merge' | 'replace') => {
+    if (!restorePreview) return;
+    
+    setIsRestoring(true);
+    setRestoreProgress(10);
+    setRestoreLogs([`⚙️ Iniciando restauración de datos en modo: ${mode === 'merge' ? '🧬 FUSIONAR ELEMENTOS' : '⚠️ REEMPLAZAR TOTALMENTE'}...`]);
+
+    try {
+      await new Promise(r => setTimeout(r, 300));
+      setRestoreProgress(40);
+
+      let finalSongs = [...songs];
+      let finalBackgrounds = [...backgrounds];
+      let finalVideos = [...videos];
+
+      if (mode === 'replace') {
+        setRestoreLogs(prev => [...prev, `🗑️ Purgando biblioteca actual y preparando la sobre-escritura limpia...`]);
+        finalSongs = restorePreview.parsedSongs;
+        finalBackgrounds = restorePreview.parsedBackgrounds;
+        finalVideos = restorePreview.parsedVideos;
+      } else {
+        setRestoreLogs(prev => [...prev, `🧬 Analizando IDs para fusionar las diferencias sin duplicar existentes...`]);
+        
+        // Merge helper - prevent duplicate songs
+        const existingSongIds = new Set(songs.map(s => s.id));
+        restorePreview.parsedSongs.forEach(song => {
+          if (!existingSongIds.has(song.id)) {
+            finalSongs.push(song);
+          }
+        });
+
+        // Merge helper - prevent duplicate backgrounds
+        const existingBgIds = new Set(backgrounds.map(b => b.id));
+        restorePreview.parsedBackgrounds.forEach(bg => {
+          if (!existingBgIds.has(bg.id)) {
+            finalBackgrounds.push(bg);
+          }
+        });
+
+        // Merge helper - prevent duplicate videos
+        const existingVidIds = new Set(videos.map(v => v.id));
+        restorePreview.parsedVideos.forEach(vid => {
+          if (!existingVidIds.has(vid.id)) {
+            finalVideos.push(vid);
+          }
+        });
+      }
+
+      await new Promise(r => setTimeout(r, 300));
+      setRestoreProgress(75);
+      setRestoreLogs(prev => [...prev, `💾 Guardando cambios unificados de forma persistente...`]);
+
+      // Save states and localStorage
+      setSongs(finalSongs);
+      saveLocalSongs(finalSongs);
+
+      setBackgrounds(finalBackgrounds);
+      saveLocalBackgrounds(finalBackgrounds);
+
+      setVideos(finalVideos);
+      localStorage.setItem('church_projector_videos', JSON.stringify(finalVideos));
+
+      await new Promise(r => setTimeout(r, 400));
+      setRestoreProgress(100);
+      setRestoreLogs(prev => [...prev, `🎉 ¡Restauración finalizada con éxito! Los datos cargados ya se encuentran disponibles.`]);
+
+      setTimeout(() => {
+        setRestorePreview(null);
+        setIsRestoring(false);
+      }, 3000);
+
+    } catch (error: any) {
+      console.error(error);
+      setRestoreLogs(prev => [...prev, `❌ Error catastrófico al procesar la restauración: ${error?.message || error}`]);
+      setIsRestoring(false);
     }
   };
 
@@ -545,6 +808,12 @@ export default function Controller() {
           setPendingUpdateFile(null);
           setSwVersion('v1.0.2-Stable');
           localStorage.setItem('swVersion', 'v1.0.2-Stable');
+
+          // Refresh the application automatically after a short delay so user can read the success log
+          setUpdateLogs(prev => [...prev, '🔄 Reiniciando aplicación para aplicar todos los cambios en caliente...']);
+          setTimeout(() => {
+            window.location.reload();
+          }, 2500);
         }
       }, (idx + 1) * 750);
     });
@@ -699,13 +968,15 @@ export default function Controller() {
   };
 
   // Video loop background library states & handlers
-  const DEFAULT_VIDEOS = useMemo(() => [
-    { id: 'video-preset-1', name: '✨ Partículas Doradas', url: 'https://assets.mixkit.co/videos/preview/mixkit-slow-motion-of-gold-glitter-particles-3057-large.mp4' },
-    { id: 'video-preset-2', name: '☁️ Nubes Celestiales', url: 'https://assets.mixkit.co/videos/preview/mixkit-clouds-and-blue-sky-background-23467-large.mp4' },
-    { id: 'video-preset-3', name: '🕯️ Velas Parroquiales', url: 'https://assets.mixkit.co/videos/preview/mixkit-candles-shining-in-the-dark-32207-large.mp4' }
-  ], []);
+  const DEFAULT_VIDEOS = useMemo(() => [], []);
 
   const [videos, setVideos] = useState<{ id: string; name: string; url: string }[]>(() => {
+    const cleared = localStorage.getItem('videos_cleared_v1');
+    if (!cleared) {
+      localStorage.removeItem('church_projector_videos');
+      localStorage.setItem('videos_cleared_v1', 'true');
+      return [];
+    }
     try {
       const saved = localStorage.getItem('church_projector_videos');
       return saved ? JSON.parse(saved) : DEFAULT_VIDEOS;
@@ -3323,6 +3594,15 @@ export default function Controller() {
                   </button>
                   <button
                     type="button"
+                    onClick={() => setAdminActiveTab('respaldo')}
+                    className={`flex-1 py-1.5 text-center rounded text-[9px] font-black uppercase tracking-wide cursor-pointer select-none transition ${
+                      adminActiveTab === 'respaldo' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    💾 Respaldo
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setAdminActiveTab('actualizacion')}
                     className={`flex-1 py-1.5 text-center rounded text-[9px] font-black uppercase tracking-wide cursor-pointer select-none transition ${
                       adminActiveTab === 'actualizacion' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'
@@ -3718,6 +3998,166 @@ export default function Controller() {
                         <p className="text-[7.5px] text-zinc-550 leading-normal italic text-center text-zinc-450 max-w-md mx-auto font-sans">
                           Nota: El motor de actualización preserva íntegramente las carpetas de canciones locales (`church_projector_songs`), lista de fondos subidos (`church_projector_backgrounds`) y videos sin borrar ningún registro.
                         </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Subtab 4: Real Backup and Restore Operations */}
+                {adminActiveTab === 'respaldo' && (
+                  <div className="space-y-4 font-sans max-h-[290px] overflow-y-auto pr-1">
+                    <span className="text-[8px] font-bold text-zinc-500 block uppercase">Copia de Seguridad Real (.ZIP)</span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Left Block: Export/Backup */}
+                      <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-lg space-y-3 flex flex-col justify-between">
+                        <div>
+                          <h4 className="text-[10px] font-black text-rose-400 uppercase flex items-center gap-1.5 mb-1">
+                            📥 Respaldar Biblioteca
+                          </h4>
+                          <p className="text-[8px] text-zinc-400 leading-normal">
+                            Crea una copia comprimida real de todas tus canciones locales cargadas, fondos fotográficos de diapositivas y enlaces de video del sistema. Se empaquetará todo en una carpeta estructurada dentro del archivo .zip descargable.
+                          </p>
+                          
+                          <div className="mt-3 bg-[#111112] border border-zinc-900 rounded p-2 text-[7.5px] font-mono text-zinc-500 space-y-1">
+                            <div>• Canciones registradas: <strong className="text-zinc-300">{songs.length}</strong></div>
+                            <div>• Fondos configurados: <strong className="text-zinc-300">{backgrounds.length}</strong></div>
+                            <div>• Videos enlazados: <strong className="text-zinc-300">{videos.length}</strong></div>
+                          </div>
+                        </div>
+
+                        <div className="pt-2">
+                          {!isBackingUp ? (
+                            <button
+                              type="button"
+                              onClick={handleCreateBackup}
+                              className="w-full py-1.5 bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-500/30 text-[9px] font-extrabold uppercase rounded cursor-pointer transition flex items-center justify-center gap-1.5 select-none"
+                            >
+                              💾 CREAR RESPALDO LOCAL & DESCARGAR ZIP
+                            </button>
+                          ) : (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[7px] font-mono text-rose-400 uppercase">
+                                <span>Generando respaldo...</span>
+                                <span>{backupProgress}%</span>
+                              </div>
+                              <div className="w-full bg-zinc-900 h-1 rounded overflow-hidden">
+                                <div className="bg-rose-500 h-full transition-all duration-200" style={{ width: `${backupProgress}%` }} />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Block: Import/Restore */}
+                      <div className="p-3 bg-zinc-950 border border-zinc-900 rounded-lg space-y-3 flex flex-col justify-between">
+                        <div>
+                          <h4 className="text-[10px] font-black text-emerald-400 uppercase flex items-center gap-1.5 mb-1">
+                            📤 Cargar Copia (Restaurar)
+                          </h4>
+                          <p className="text-[8px] text-zinc-400 leading-normal">
+                            Selecciona una copia en formato .ZIP descargada previamente desde este sistema o por otro operador. Podrás visualizar el contenido interno antes de aplicarlo.
+                          </p>
+                        </div>
+
+                        <div className="pt-2">
+                          {!isRestoring && !restorePreview ? (
+                            <label className="w-full py-1.5 bg-emerald-950/40 hover:bg-emerald-950/60 text-emerald-400 border border-emerald-500/30 text-[9px] font-extrabold uppercase rounded cursor-pointer transition flex items-center justify-center gap-1.5 select-none text-center">
+                              📁 SELECCIONAR RESPALDO ZIP
+                              <input
+                                type="file"
+                                onChange={handleLoadBackupFileChange}
+                                accept=".zip"
+                                className="hidden"
+                              />
+                            </label>
+                          ) : isRestoring ? (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-[7px] font-mono text-emerald-405 uppercase">
+                                <span>Procesando archivo...</span>
+                                <span>{restoreProgress}%</span>
+                              </div>
+                              <div className="w-full bg-zinc-900 h-1 rounded overflow-hidden">
+                                <div className="bg-emerald-500 h-full transition-all duration-200" style={{ width: `${restoreProgress}%` }} />
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Terminal for backup success / status logs */}
+                    {backupLogs.length > 0 && isBackingUp && (
+                      <div className="bg-zinc-950 p-2 rounded-lg border border-zinc-900 font-mono text-[7px] text-rose-300 space-y-0.5 animation-fade-in">
+                        {backupLogs.map((log, bIdx) => (
+                          <div key={bIdx} className="leading-normal">{log}</div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Preview box and restore config options when file is uploaded */}
+                    {restorePreview && (
+                      <div className="bg-zinc-950/80 border border-emerald-500/40 p-2.5 rounded-lg space-y-2.5 text-left animation-fade-in font-sans">
+                        <div className="border-b border-zinc-900 pb-1 flex items-center justify-between">
+                          <span className="text-[8.5px] font-black text-emerald-400 uppercase tracking-wider">📦 Confirmar Restauración de Datos:</span>
+                          <span className="text-[7.5px] font-mono text-zinc-400 bg-zinc-900 px-1 py-0.5 rounded truncate max-w-[155px]" title={restorePreview.fileName}>
+                            {restorePreview.fileName}
+                          </span>
+                        </div>
+                        
+                        <div className="grid grid-cols-3 gap-1.5 bg-zinc-900/40 p-1.5 rounded text-[8px] font-mono text-zinc-300">
+                          <div className="text-center py-1 bg-black/30 rounded border border-zinc-900 select-none">
+                            <span className="block text-zinc-500 text-[6.5px]">CANCIONES</span>
+                            <span className="font-bold text-indigo-400 text-[10px]">{restorePreview.songsCount}</span>
+                          </div>
+                          <div className="text-center py-1 bg-black/30 rounded border border-zinc-900 select-none">
+                            <span className="block text-zinc-500 text-[6.5px]">FONDOS</span>
+                            <span className="font-bold text-rose-400 text-[10px]">{restorePreview.backgroundsCount}</span>
+                          </div>
+                          <div className="text-center py-1 bg-black/30 rounded border border-zinc-900 select-none">
+                            <span className="block text-zinc-500 text-[6.5px]">VIDEOS</span>
+                            <span className="font-bold text-amber-500 text-[10px]">{restorePreview.videosCount}</span>
+                          </div>
+                        </div>
+
+                        <p className="text-[7.5px] text-zinc-400 leading-normal">
+                          Por favor, seleccione el modo en el que ingresará esta copia de seguridad. Los datos se persistirán permanentemente de forma inmediata:
+                        </p>
+
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmRestore('merge')}
+                            className="flex-1 py-1 px-1 bg-indigo-700/80 hover:bg-indigo-650 text-white font-bold text-[8.5px] rounded uppercase cursor-pointer text-center select-none transition text-center"
+                            title="Conserva todos tus datos actuales, agregando sólo las canciones/fondos del zip que no tengas (No Duplica IDs)"
+                          >
+                            🧬 FUSIONAR DIFERENCIAS
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleConfirmRestore('replace')}
+                            className="flex-1 py-1 px-1 bg-rose-650 hover:bg-rose-550 text-white font-extrabold text-[8.5px] rounded uppercase cursor-pointer text-center select-none transition text-center"
+                            title="Sobreescribirá por completo todos tus datos de canciones, fondos y videos con los contenidos en el backup (¡PÉRDIDA DE DATOS ACTUALES!)"
+                          >
+                            ⚠️ REEMPLAZAR TODO
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setRestorePreview(null)}
+                            className="py-1 px-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 text-zinc-500 font-bold text-[8.5px] rounded uppercase cursor-pointer text-center select-none transition"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Restore progress and logs when installing live */}
+                    {restoreLogs.length > 0 && (
+                      <div className="bg-zinc-950 p-2 rounded-lg border border-zinc-900 font-mono text-[7px] text-emerald-400 space-y-0.5 animation-fade-in">
+                        {restoreLogs.map((log, rIdx) => (
+                          <div key={rIdx} className="leading-normal">{log}</div>
+                        ))}
                       </div>
                     )}
                   </div>

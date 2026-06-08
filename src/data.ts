@@ -110,29 +110,4 @@ A Ti sea todo el honor`,
   }
 ];
 
-export const DEFAULT_BACKGROUNDS: Background[] = [
-  {
-    id: 'bg-preset-1',
-    name: 'Textura Azul Sagrado',
-    url: 'https://images.unsplash.com/photo-1518155203641-f2833ccec3a5?q=80&w=1200&auto=format&fit=crop',
-    type: 'image'
-  },
-  {
-    id: 'bg-preset-2',
-    name: 'Universo Alabanza',
-    url: 'https://images.unsplash.com/photo-1506318137071-a8e063b4bec0?q=80&w=1200&auto=format&fit=crop',
-    type: 'image'
-  },
-  {
-    id: 'bg-preset-3',
-    name: 'Bosque de Paz',
-    url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?q=80&w=1200&auto=format&fit=crop',
-    type: 'image'
-  },
-  {
-    id: 'bg-preset-4',
-    name: 'Sinfonía Cálida',
-    url: 'https://images.unsplash.com/photo-1507608869274-d3177c8bb4c7?q=80&w=1200&auto=format&fit=crop',
-    type: 'image'
-  }
-];
+export const DEFAULT_BACKGROUNDS: Background[] = [];
