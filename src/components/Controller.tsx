@@ -238,6 +238,255 @@ const SKINS = {
   }
 };
 
+interface SaintInfo {
+  name: string;
+  type: string;
+  bio: string;
+  phrase: string;
+}
+
+const DEFAULT_SAINTS_BY_DATE: Record<string, SaintInfo> = {
+  // June Catholical Liturgy - Argentine Catholic Santoral
+  "6-1": { 
+    name: "Nuestra Señora de Luján", 
+    type: "Patrona Nacional de la República Argentina", 
+    bio: "Madre de la Patria y consuelo perpetuo de los argentinos. Su basílica nacional es el corazón vivo de la devoción mariana en el país.", 
+    phrase: "María, Madre de Luján, protege a las familias de nuestra querida Patria." 
+  },
+  "6-2": { 
+    name: "Santo Cura Brochero", 
+    type: "San José Gabriel del Rosario, El Cura Gaucho", 
+    bio: "Ejemplo vivo de celo pastoral. Evangelizó lomo de mula por todas las sierras cordobesas, abriendo caminos y asilos de ejercicios.", 
+    phrase: "Dios es como los mosquitos: en todas partes está, pero tiene predilección por los necesitados." 
+  },
+  "6-3": { 
+    name: "Santa Mama Antula", 
+    type: "Santa María Antonia de San José, Primera Santa Argentina", 
+    bio: "Mujer fuerte de la fe colonial. Caminó descalza miles de kilómetros para sostener vivos los Ejercicios Espirituales ignacianos.", 
+    phrase: "La paciencia todo lo alcanza. Quien confía de verdad en la providencia de Dios nunca andará apurado." 
+  },
+  "6-4": { 
+    name: "Beato Ceferino Namuncurá", 
+    type: "El Lirio de la Patagonia, Joven Sembrador", 
+    bio: "Joven descendiente mapuche y alumno salesiano ejemplar. Un modelo de pureza, piedad profunda y deseo incansable de ser útil a su gente.", 
+    phrase: "Quiero ser útil a mi gente y llevarles la alegría del santo Evangelio." 
+  },
+  "6-5": { 
+    name: "Beato Mamerto Esquiú", 
+    type: "Obispo del Civismo y de la Paz Franciscana", 
+    bio: "Faro moral en épocas difíciles. El humilde fraile catamarqueño que unió a la nación promoviendo la paz nacional desde el púlpito.", 
+    phrase: "La paz y concordia civil son las bases santas sobre las cuales descansa la prosperidad de los pueblos." 
+  },
+  "6-6": { 
+    name: "San Héctor Valdivielso Sáez", 
+    type: "Hermano de La Salle, Primer Santo Argentino Mártir", 
+    bio: "Nacido en Buenos Aires y educador apasionado de niños necesitados. Mantuvo su fe inquebrantable hasta su martirio de amor.", 
+    phrase: "Educar con el corazón es la forma más bella de sembrar la luz divina en los jóvenes." 
+  },
+  "6-7": { 
+    name: "Nuestra Señora de Itatí", 
+    type: "Patrona y Protectora de todo el Nordeste Argentino", 
+    bio: "Madre morena del Paraná venerada en Corrientes. Sus milagros de auxilio a los pueblos ribereños convocan a miles de peregrinos.", 
+    phrase: "Virgen de Itatí, protege con tu tierno manto el caminar del pueblo argentino." 
+  },
+  "6-8": { 
+    name: "Beato Cardenal Eduardo Pironio", 
+    type: "El Cardenal de la Esperanza, Padre de la Juventud", 
+    bio: "Pastor ejemplar que enseñó la teología de la cruz y la alegría. Fundador e impulsor de las históricas Jornadas Mundiales de la Juventud.", 
+    phrase: "La esperanza no defrauda jamás, porque está cimentada en la fidelidad eterna de Jesús." 
+  },
+  "6-9": { 
+    name: "Beatos Mártires Riojanos", 
+    type: "Angelelli, de Dios Murias, Longueville y Pedernera", 
+    bio: "Testigos de la verdad evangélica en los campos de La Rioja. Dedicaron sus vidas a la promoción de los campesinos en comunión con Cristo.", 
+    phrase: "Con un oído en el Evangelio y el otro en el clamor sufriente de nuestro pueblo." 
+  },
+  "6-10": { 
+    name: "Beata Laura Vicuña", 
+    type: "Flor de los Andes, Joven Ofrenda de la Patagonia", 
+    bio: "Joven estudiante en Junín de los Andes que ofreció heroicamente su vida entera a Dios por la auténtica conversión de su madre.", 
+    phrase: "Señor, prefiero morir antes que pecar, toma mi pobre juventud como una humilde plegaria de reconciliación." 
+  },
+  "6-11": { 
+    name: "Beata María Tránsito de Cabanillas", 
+    type: "Madre Tránsito de Jesús, Fundadora en Córdoba", 
+    bio: "Humilde religiosa cordobesa que fundó las Terciarias Misioneras Franciscanas. Se consagró con dulzura extrema a huérfanos y necesitados.", 
+    phrase: "El olvido de uno mismo por amor a los pequeños es la ofrenda más grata ante el Altar de la Gracia." 
+  },
+  "6-12": { 
+    name: "Señor y Virgen del Milagro", 
+    type: "Patronos Protectores de la Provincia de Salta", 
+    bio: "Su milagrosa intercesión en el siglo XVII salvó al pueblo norteño de los sismos, sellando un eterno pacto de devoción federal.", 
+    phrase: "Tú con nosotros, nosotros contigo; Salta renueva hoy su pacto inquebrantable de fidelidad." 
+  },
+  "6-13": { 
+    name: "San Antonio de Padua", 
+    type: "Tradicional Doctor de Nuestra Fe, Amigo del Pueblo", 
+    bio: "Sacerdote franciscano portador de una elocuencia celestial y tierno protector de los pobres. Sumamente venerado en capillas criollas.", 
+    phrase: "El habla es fecunda cuando las buenas obras hablan de Cristo y confirman lo que enseña la boca." 
+  },
+  "6-14": { 
+    name: "Beata María Crescencia Pérez", 
+    type: "Mensajera de la Paz, Hija de María Santísima del Huerto", 
+    bio: "Venerada religiosa cuyo cuerpo descansa incorrupto en Pergamino. Ejemplo excelso de mansedumbre caritativa y entrega silenciosa.", 
+    phrase: "Hacer siempre el bien silenciosamente, sembrando paz y consuelo en todos los corazones." 
+  },
+  "6-15": { 
+    name: "Beata Camila Rolón", 
+    type: "Madre de los Desamparados, Fundadora de La Plata", 
+    bio: "Insigne fundadora de las Hermanas Pobres Bonaerenses, quien consagró su larga vida a cobijar huérfanos y ancianos abandonados.", 
+    phrase: "Para Dios no hay nada imposible cuando se obra con recta intención y amor sin límites." 
+  },
+  "6-16": { 
+    name: "Nuestra Señora de la Guardia", 
+    type: "Protectora Excelso de los Inmigrantes y sus Familias", 
+    bio: "Veneración introducida por la comunidad genovesa en Buenos Aires, símbolo entrañable del amparo divino sobre el trabajo laborioso.", 
+    phrase: "Virgen Santísima, custodia el trabajo de los hogares que forjan con esfuerzo el porvenir del país." 
+  },
+  "6-17": { 
+    name: "San Martín de Tours", 
+    type: "Patrono Protector de la Ciudad de Buenos Aires", 
+    bio: "Soldado romano piadoso que dividió su capa militar con un mendigo tiritando. Fue elegido patrono fundacional de la capital argentina.", 
+    phrase: "No ruego por ser liberado de las fatigas diarias, que se cumpla siempre en mí tu santa voluntad." 
+  },
+  "6-18": { 
+    name: "Nuestra Señora del Valle de Catamarca", 
+    type: "Protectora del Noroeste Argentino y Patrona Nacional de Turismo", 
+    bio: "Su milagrosa imagen morena fue hallada en la gruta de Choya. Es madre del consuelo federal y congrega enormes procesiones de fe.", 
+    phrase: "Virgen del Valle, cobija las esperanzas, dolores y alegrías de tus hijos peregrinos." 
+  },
+  "6-19": { 
+    name: "San Medardo de Noyon", 
+    type: "Protector Celestial de los Agricultores y Campos", 
+    bio: "Apóstol de la caridad en el entorno rural, invocado en la campaña argentina para obtener buenas cosechas y lluvias propicias.", 
+    phrase: "Seamos siempre agradecidos con los frutos de la tierra que la Divina Providencia nos regala cada mañana." 
+  },
+  "6-20": { 
+    name: "Nuestra Señora de la Merced", 
+    type: "Madra Celestial, Patrona y Generala del Ejército Argentino", 
+    bio: "Elegida por el General Manuel Belgrano como Generala de las Fuerzas Patrias, rindiéndole su bastón de mando tras la Batalla de Tucumán.", 
+    phrase: "Bajo tu amparo maternal colocamos la libertad, honor y soberanía de nuestra amada República." 
+  },
+  "6-21": { 
+    name: "San Luis Gonzaga", 
+    type: "Patrono Universal de los Estudiantes y Jóvenes Católicos", 
+    bio: "Joven jesuita que prefirió la entrega total del alma, sirviendo pastoralmente en tiempos de peste hasta entregar su propia vida.", 
+    phrase: "La verdadera grandeza no está en los títulos mundanos, sino en el humilde servicio a los enfermos de Cristo." 
+  },
+  "6-22": { 
+    name: "Nuestra Señora de Sumampa", 
+    type: "Patrona de Santiago del Estero y Madre del Consuelo", 
+    bio: "Llegada milagrosamente en carreta junto a la Virgen de Luján en el siglo XVII, eligiendo quedarse en tierras santiagueñas para amparar a sus hijos gauchos.", 
+    phrase: "Virgen de Sumampa, enséñanos a habitar la llanura del silencio y de la fidelidad cristiana." 
+  },
+  "6-23": { 
+    name: "San José Cafasso", 
+    type: "Padre del Clero y Consolador de los Presos", 
+    bio: "Santo confesor que acompañó con inefable ternura a los condenados y marginados, un modelo amado de pastor diocesano.", 
+    phrase: "Un sacerdote que se santifica es capaz de guiar a miles de almas extraviadas hacia el abrazo del Padre celestial." 
+  },
+  "6-24": { 
+    name: "Nacimiento de San Juan Bautista", 
+    type: "Solemnidad del Precursor del Salvador", 
+    bio: "El último gran profeta del Antiguo Pacto que preparó el camino para el Cordero de Dios. Se celebra históricamente con hogueras de fe.", 
+    phrase: "Es enteramente necesario que Jesús crezca y que yo deba disminuir en las miradas del mundo." 
+  },
+  "6-25": { 
+    name: "Beata Catalina de María Rodríguez", 
+    type: "Insigne Cordobesa, Fundadora de las Esclavas del Sagrado Corazón", 
+    bio: "Pionera argentina de la vida religiosa femenina de misión activa, dedicando su amor pastoral al resguardo espiritual y humano de mujeres.", 
+    phrase: "Con el Sagrado Corazón de Jesús todo se sobrelleva con un gozo incombustible." 
+  },
+  "6-26": { 
+    name: "San Josemaría Escrivá", 
+    type: "Fundador de la Santidad en el Trabajo Cotidiano", 
+    bio: "Enseñó que todas las ocupaciones ordinarias del hogar pueden ofrecerse como servicio excelente a Dios. Tuvo enorme impronta en el país.", 
+    phrase: "Tu trabajo diario, tus quehaceres familiares y tus deberes civiles no son obstáculos, sino el altar de tu santidad ordinaria." 
+  },
+  "6-27": { 
+    name: "Nuestra Señora del Perpetuo Socorro", 
+    type: "Madre del Amparo Perpetuo, Imagen Redentora", 
+    bio: "Icono bizantino sagrado que retrata el consuelo maternal de María ante el dolor, arraigado en miles de familias argentinas.", 
+    phrase: "En todas las fatigas y tribulaciones del camino, vuelve tu mirada confiada a la Madre del Perpetuo Auxilio." 
+  },
+  "6-28": { 
+    name: "Beata María Antonia y el Legado jesuita", 
+    type: "Evangelización de las Provincias y Misionera Federal", 
+    bio: "Conmemoración de la gran misión de Mama Antula uniendo tierras del noroeste argentino y Buenos Aires colonial con su oración de fe pura.", 
+    phrase: "Busquemos en todo amar y servir con una generosidad que no le ponga condiciones a Dios." 
+  },
+  "6-29": { 
+    name: "Santos Pedro y Pablo", 
+    type: "Solemnidad de las Columnas Apostólicas de la Iglesia Universal", 
+    bio: "El humilde pescador elegido como roca pastoral de fe firme, y el incansable heraldo de las naciones de los gentiles.", 
+    phrase: "Señor, Tú lo sabes todo bien, Tú sabes de verdad con toda mi alma doliente que yo te amo." 
+  },
+  "6-30": { 
+    name: "San Cayetano de Thiene", 
+    type: "Fidelidad y Preparación de Oración Familiar", 
+    bio: "Amoroso intercesor conocido como patrono del Pan y del Trabajo, cuyo santuario de Liniers es el refugio de fe predilecto de la patria.", 
+    phrase: "Buscad primero el Reino de Dios y su divina justicia, y todo lo demás vendrá como bendito regalo." 
+  }
+};
+
+const getSaintOfDate = (date: Date): SaintInfo => {
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const key = `${m}-${d}`;
+  if (DEFAULT_SAINTS_BY_DATE[key]) {
+    return DEFAULT_SAINTS_BY_DATE[key];
+  }
+  
+  // Rotating general backup saints representing Argentinian Santoral
+  const backupSaints: SaintInfo[] = [
+    { 
+      name: "Nuestra Señora de Luján", 
+      type: "Patrona de la República Argentina", 
+      bio: "Un milagro de amor en el Río Luján en el siglo XVII. La pequeña imagen de barro cocido decidió quedarse allí para amparar, consolar y reinar sobre el pueblo de nuestra amada Patria.", 
+      phrase: "María de Luján, acompáñanos a transitar en paz el camino de nuestra fe federal." 
+    },
+    { 
+      name: "San José Gabriel Brochero", 
+      type: "Santo Cura Gaucho de la Iglesia", 
+      bio: "Sacerdote cordobés incansable que cruzó las Altas Cumbres a lomo de mula. Construyó capillas, escuelas, acueductos, y transformó la vida espiritual y material de Traslasierra por amor a Jesús.", 
+      phrase: "Dios me da la gracia de trabajar y gastar mi vida entera por la salvación de mis amados serranos." 
+    },
+    { 
+      name: "Santa María Antonia de San José", 
+      type: "La Ilustre Santa Mama Antula", 
+      bio: "Heroica laica santiagueña-riojana que anduvo a pie miles de kilómetros organizando los Ejercicios Espirituales Ignacianos clausurados, uniendo el norte argentino con Buenos Aires en un testimonio inquebrantable.", 
+      phrase: "Quiero caminar hasta donde Dios me guíe, cargando mi cruz con alegría y sin miedo al cansancio." 
+    },
+    { 
+      name: "Beato Ceferino Namuncurá", 
+      type: "Joven Peñi, Lirio de la Patagonia", 
+      bio: "El humilde hijo del gran cacique Namuncurá que abrazó la fe con piedad evangélica asombrosa, deseando educarse para ayudar a su tribu sureña en comunión con los salesianos de Don Bosco.", 
+      phrase: "Mi mayor anhelo es ser útil a mis hermanos de la Patagonia argentina." 
+    },
+    { 
+      name: "Beato Mamerto Esquiú", 
+      type: "Insigne Obispo Franciscano de Córdoba", 
+      bio: "Pastor, periodista y civilizador catamarqueño. Convocó fervorosamente a los argentinos a sellar la concordia y respetar la Constitución de la Nación como base de su desarrollo.", 
+      phrase: "Respeten las leyes civiles, pues de la unión fraterna nace la fuerza y bendición de nuestra amada Patria." 
+    },
+    { 
+      name: "San Héctor Valdivielso Sáez", 
+      type: "Mártir de los Hermanos de las Escuelas Cristianas", 
+      bio: "Primer santo nacido en Argentina, educador infatigable en las aulas lasallanas comprometido con encender el amor de Dios en cada alumno.", 
+      phrase: "Toda mi vida se resume en consagrar mis quehaceres cotidianos a iluminar las mentes de los niños." 
+    },
+    { 
+      name: "Nuestra Señora de Itatí", 
+      type: "Estrella del Paraná, Abogada de Corrientes", 
+      bio: "Venerada devoción mariana ribereña. Su amorosa presencia protege la pesca, las labranzas del litoral y a millones de peregrinos del país.", 
+      phrase: "Madre morena, bajo tu mirada tierna colocamos las barcas de nuestras familias." 
+    }
+  ];
+
+  const index = (m * 23 + d) % backupSaints.length;
+  return backupSaints[index];
+};
+
 export default function Controller() {
   // Database States loaded from LocalStorage
   const [songs, setSongs] = useState<Song[]>(() => getLocalSongs(DEFAULT_SONGS));
@@ -409,6 +658,18 @@ export default function Controller() {
   const [adminError, setAdminError] = useState('');
   const [newPinInput, setNewPinInput] = useState('');
   const [adminActiveTab, setAdminActiveTab] = useState<'funciones' | 'seguridad' | 'respaldo' | 'actualizacion'>('funciones');
+
+  // Santoral (Saint of the Day) customizable states
+  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = new Date();
+      if (now.getDate() !== currentDate.getDate() || now.getMonth() !== currentDate.getMonth()) {
+        setCurrentDate(now);
+      }
+    }, 15000); // Check every 15 seconds to stay absolutely fresh and dynamic
+    return () => clearInterval(timer);
+  }, [currentDate]);
 
   // Real user data backup & restore states
   const [isBackingUp, setIsBackingUp] = useState(false);
@@ -3352,42 +3613,32 @@ export default function Controller() {
               </div>
             )}
 
-            {/* ESTADO DEL TIEMPO (WEATHER DISPLAY) - ACTUALIZACIÓN AUTOMÁTICA */}
-            <div className="bg-zinc-950/40 p-2.5 rounded border border-zinc-900 space-y-1.5 mt-0.5 font-sans">
-              <div className="flex items-center justify-between border-b border-zinc-900/60 pb-1">
-                <span className="text-[8px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1">
+            {/* INTEGRATED CLIMA & SANTORAL DE HOY (WEATHER & LITURGICAL SAINT INFOCARD) */}
+            <div className="bg-zinc-950/40 p-3.5 rounded border border-zinc-900 space-y-3.5 mt-1 font-sans">
+              
+              {/* Clima Actual Section */}
+              <div className="flex items-center justify-between border-b border-zinc-900/80 pb-2">
+                <span className="text-[10px] font-black text-rose-450 uppercase tracking-widest flex items-center gap-1">
                   ⛅ ESTADO DEL TIEMPO (CLIMA)
                 </span>
-                <span className="text-[6.5px] font-mono text-zinc-650 bg-black/30 px-1 py-0.2 rounded">
-                  AUTO-UPDATE
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-2 px-0.5">
-                {/* Weather details presentation */}
+                
                 <div className="flex items-center gap-2">
-                  <span className="text-xl leading-none animate-pulse" title="Condición climática">
-                    {state.weatherDesc ? state.weatherDesc.split(' ')[0] : '☀️'}
-                  </span>
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-black text-zinc-200 font-mono tracking-tight">
+                  <div className="flex items-center gap-1.5 bg-black/40 px-2 py-0.5 rounded border border-zinc-900">
+                    <span className="text-base leading-none animate-pulse" title="Condición climática">
+                      {state.weatherDesc ? state.weatherDesc.split(' ')[0] : '☀️'}
+                    </span>
+                    <span className="text-[12px] font-black text-zinc-100 font-mono tracking-tight">
                       {state.weatherTemp || 'Midiendo...'}
                     </span>
-                    <span className="text-[7.5px] text-zinc-500 font-bold uppercase leading-tight truncate max-w-[130px]">
-                      {state.weatherDesc ? state.weatherDesc.substring(state.weatherDesc.indexOf(' ') + 1) : 'Sincronizando...'}
-                    </span>
                   </div>
-                </div>
 
-                {/* Small toggle button to project weather - Styled in precise RED color theme */}
-                <div className="flex items-center gap-1.5">
                   <button
                     type="button"
                     onClick={() => updateState(prev => ({ ...prev, showWeatherOnProjector: !prev.showWeatherOnProjector }))}
-                    className={`px-2 py-1 rounded border text-[8px] font-black tracking-wider uppercase transition-all duration-150 flex items-center gap-1 cursor-pointer ${
+                    className={`px-2 py-1 rounded border text-[8.5px] font-black tracking-wider uppercase transition-all duration-150 flex items-center gap-1 cursor-pointer ${
                       state.showWeatherOnProjector
-                        ? 'bg-red-950 border-red-500 text-red-500 hover:text-red-400 shadow shadow-red-500/10'
-                        : 'bg-[#1a1a1c]/80 border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                        ? 'bg-red-950 border-red-500 text-red-400 hover:text-red-300 shadow shadow-red-500/10'
+                        : 'bg-[#1a1a1c]/80 border-zinc-800 text-zinc-400 hover:text-zinc-200'
                     }`}
                     title="Mostrar/ocultar temperatura en el proyector principal (arriba derecha en rojo)"
                   >
@@ -3397,89 +3648,31 @@ export default function Controller() {
                 </div>
               </div>
 
-              {/* Dynamic live font-size buttons for real-time weather font scale */}
-              <div className="flex items-center justify-between gap-2 px-0.5 border-t border-zinc-900/60 pt-1.5 mt-1">
-                <span className="text-[7.5px] font-bold text-zinc-500 uppercase tracking-wider">TAMAÑO CLIMA EN PANTALLA:</span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => updateState(prev => ({ ...prev, weatherFontSize: Math.max(12, (prev.weatherFontSize || 35) - 3) }))}
-                    className="py-0.5 px-1.5 bg-[#1a1a1c]/80 border border-zinc-800 hover:border-zinc-700 hover:text-white text-zinc-400 rounded text-[8px] font-bold cursor-pointer transition active:scale-95"
-                    title="Achicar tamaño de letra de clima"
-                  >
-                    C-
-                  </button>
-                  <span className="font-mono text-[8px] text-zinc-300 font-bold min-w-[28px] text-center bg-black/40 py-0.5 px-0.5 rounded border border-zinc-900">
-                    {state.weatherFontSize || 35}px
+              {/* Santoral Católico Section */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between pb-1">
+                  <span className="text-[11px] font-extrabold text-amber-500 uppercase tracking-wider flex items-center gap-1">
+                    😇 SANTORAL CATÓLICO ARGENTINO
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => updateState(prev => ({ ...prev, weatherFontSize: Math.min(125, (prev.weatherFontSize || 35) + 3) }))}
-                    className="py-0.5 px-1.5 bg-[#1a1a1c]/80 border border-zinc-800 hover:border-zinc-700 hover:text-white text-zinc-400 rounded text-[8px] font-bold cursor-pointer transition active:scale-95"
-                    title="Agrandar tamaño de letra de clima"
-                  >
-                    C+
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* GRUPO DE BOTONES: AUTOAJUSTABLE AL TAMAÑO & CONTROLES DE ESCALA */}
-            <div className="bg-zinc-950/40 p-2 rounded border border-zinc-900 space-y-1.5 select-none font-sans mt-0.5">
-              <span className="text-[8px] font-black text-cyan-400 block uppercase tracking-wider">
-                📐 AJUSTE DE TAMAÑO DE LETRAS
-              </span>
-              <div className="grid grid-cols-2 gap-1 px-0.5">
-                {/* Autoajustable al tamaño switch button */}
-                <button
-                  type="button"
-                  onClick={() => updateState(prev => ({ ...prev, isAutoFontSize: !prev.isAutoFontSize }))}
-                  className={`py-1.5 px-2 rounded text-[8.5px] uppercase font-black tracking-wide border transition flex items-center justify-between gap-1 cursor-pointer ${
-                    state.isAutoFontSize
-                      ? 'bg-emerald-650 border-emerald-500 text-white shadow'
-                      : 'bg-[#1a1a1c]/80 border-zinc-800 text-zinc-400 hover:text-zinc-200'
-                  }`}
-                  title="Auto-ajusta el tamaño de letra en proyección según la cantidad de caracteres para evitar cortes."
-                >
-                  <span>Auto-ajustable</span>
-                  <span className="text-[7.5px] font-mono font-bold bg-black/40 px-1 py-0.2 rounded">
-                    {state.isAutoFontSize ? 'ON' : 'OFF'}
+                  <span className="text-[9px] font-mono text-zinc-500 bg-black/40 px-2 py-0.5 rounded border border-zinc-900">
+                    DIARIO / SINC.
                   </span>
-                </button>
-
-                {/* Direct Reset to Default font size */}
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => updateState(prev => ({ ...prev, fontSize: Math.max(24, (prev.fontSize || 100) - 8) }))}
-                    className="flex-1 py-1 px-1 bg-[#1a1a1c]/80 border border-zinc-800 hover:border-zinc-700 text-zinc-300 rounded text-[9.5px] font-black tracking-tight flex items-center justify-center cursor-pointer transition active:scale-95"
-                    title="Reducir tamaño manual"
-                  >
-                    A-
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateState(prev => ({ ...prev, fontSize: 100 }))}
-                    className="flex-1 py-1 px-1 bg-[#1a1a1c]/80 border border-zinc-800 hover:border-zinc-700 text-zinc-300 rounded text-[8px] font-black tracking-tight flex items-center justify-center cursor-pointer transition active:scale-95"
-                    title="Restablecer a 100px por defecto"
-                  >
-                    Defecto
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => updateState(prev => ({ ...prev, fontSize: Math.min(240, (prev.fontSize || 100) + 8) }))}
-                    className="flex-1 py-1 px-1 bg-[#1a1a1c]/80 border border-zinc-800 hover:border-zinc-700 text-zinc-300 rounded text-[9.5px] font-black tracking-tight flex items-center justify-center cursor-pointer transition active:scale-95"
-                    title="Aumentar tamaño manual"
-                  >
-                    A+
-                  </button>
                 </div>
-              </div>
 
-              {/* Current size indicator tag */}
-              <div className="flex items-center justify-between text-[7px] text-zinc-500 px-1 font-bold">
-                <span>TAMAÑO ACTIVO EN PROYECTOR:</span>
-                <span className="font-mono text-zinc-350">{state.fontSize || 100}px</span>
+                <div className="space-y-2.5 pt-1 leading-normal bg-black/25 p-3.5 rounded border border-zinc-900/50">
+                  <div className="flex justify-between items-baseline gap-2 flex-wrap border-b border-zinc-900 pb-1.5">
+                    <span className="text-[15.5px] font-black text-amber-400 font-sans tracking-tight">
+                      {getSaintOfDate(currentDate).name}
+                    </span>
+                    <span className="text-[11px] text-zinc-400 font-mono tracking-wider font-extrabold uppercase shrink-0">
+                      {getSaintOfDate(currentDate).type}
+                    </span>
+                  </div>
+
+                  <p className="text-[13.5px] text-zinc-200 leading-relaxed font-sans text-justify font-medium">
+                    {getSaintOfDate(currentDate).bio}
+                  </p>
+                </div>
               </div>
             </div>
 

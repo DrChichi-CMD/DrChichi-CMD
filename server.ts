@@ -283,7 +283,10 @@ async function startServer() {
         wss.emit("connection", ws, request);
       });
     } else {
-      requestSocket.destroy();
+      // Avoid violently destroying sockets in development so that Vite's internal WS can close or negotiate cleanly
+      if (process.env.NODE_ENV === "production") {
+        requestSocket.destroy();
+      }
     }
   });
 
