@@ -71,6 +71,12 @@ export interface ProjectorState {
   weatherDesc?: string;
   weatherFontSize?: number;
   isAutoFontSize?: boolean;
+
+  // Santoral display sync fields (Leyenda)
+  showSaintOnProjector?: boolean;
+  saintName?: string;
+  saintType?: string;
+  saintBio?: string;
 }
 
 // Broadcast message interface for syncing controller with projector window

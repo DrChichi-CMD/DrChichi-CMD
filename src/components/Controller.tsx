@@ -3654,9 +3654,32 @@ export default function Controller() {
                   <span className="text-[11px] font-extrabold text-amber-500 uppercase tracking-wider flex items-center gap-1">
                     😇 SANTORAL CATÓLICO ARGENTINO
                   </span>
-                  <span className="text-[9px] font-mono text-zinc-500 bg-black/40 px-2 py-0.5 rounded border border-zinc-900">
-                    DIARIO / SINC.
-                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const saint = getSaintOfDate(currentDate);
+                      updateState(prev => {
+                        const show = !prev.showSaintOnProjector;
+                        return {
+                          ...prev,
+                          showSaintOnProjector: show,
+                          saintName: show ? saint.name : '',
+                          saintType: show ? saint.type : '',
+                          saintBio: show ? saint.bio : ''
+                        };
+                      });
+                    }}
+                    className={`px-2 py-0.5 rounded border text-[8.5px] font-black tracking-wider uppercase transition-all duration-150 flex items-center gap-1.5 cursor-pointer ${
+                      state.showSaintOnProjector
+                        ? 'bg-amber-950 border-amber-500 text-amber-400 hover:text-amber-300 shadow shadow-amber-500/10'
+                        : 'bg-[#1a1a1c]/80 border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    title="Proyectar el santoral de hoy en pantalla como una leyenda inferior"
+                  >
+                    <span>{state.showSaintOnProjector ? '📺 AL AIRE' : 'PROYECTAR'}</span>
+                    <div className={`w-1.5 h-1.5 rounded-full ${state.showSaintOnProjector ? 'bg-amber-500 animate-pulse' : 'bg-zinc-650'}`} />
+                  </button>
                 </div>
 
                 <div className="space-y-2.5 pt-1 leading-normal bg-black/25 p-3.5 rounded border border-zinc-900/50">

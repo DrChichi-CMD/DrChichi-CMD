@@ -119,7 +119,11 @@ export default function Projector() {
           prev.showWeatherOnProjector !== newState.showWeatherOnProjector ||
           prev.weatherTemp !== newState.weatherTemp ||
           prev.weatherDesc !== newState.weatherDesc ||
-          prev.isAutoFontSize !== newState.isAutoFontSize;
+          prev.isAutoFontSize !== newState.isAutoFontSize ||
+          prev.showSaintOnProjector !== newState.showSaintOnProjector ||
+          prev.saintName !== newState.saintName ||
+          prev.saintType !== newState.saintType ||
+          prev.saintBio !== newState.saintBio;
         return changed ? newState : prev;
       });
       if (newSongs && Array.isArray(newSongs) && newSongs.length > 0) {
@@ -441,6 +445,55 @@ export default function Projector() {
           ) : null}
         </AnimatePresence>
       </div>
+
+      {/* Santoral legend overlay (Lower Third / Leyenda) */}
+      <AnimatePresence>
+        {state.showSaintOnProjector && !state.activeSongId && state.saintName && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 30 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            style={{
+              zIndex: 35,
+              bottom: state.isTickerActive && state.tickerText ? `${Math.max(64, (state.tickerFontSize || 16) * 2.3) + 24}px` : '32px'
+            }}
+            className="absolute left-1/2 -translate-x-1/2 w-[90%] max-w-[850px] bg-black/85 backdrop-blur-md rounded-xl border border-yellow-500/40 px-6 py-4 shadow-[0_15px_40px_rgba(0,0,0,0.8)] flex flex-col md:flex-row items-center gap-3 md:gap-5 select-none pointer-events-none transition-all duration-300"
+          >
+            {/* Yellow icon and branding indicators */}
+            <div className="flex items-center gap-2.5 shrink-0 justify-center">
+              <span className="text-2xl animate-pulse">😇</span>
+              <div className="flex flex-col text-left">
+                <span className="text-[12px] font-black text-white tracking-wider uppercase font-sans leading-none">
+                  SANTORAL DE HOY
+                </span>
+                <span className="text-[9px] font-mono font-bold text-yellow-500/90 uppercase tracking-widest mt-1 leading-none">
+                  CATÓLICO ARGENTINO
+                </span>
+              </div>
+              <div className="h-8 w-[1px] bg-zinc-800 hidden md:block mx-3" />
+            </div>
+
+            <div className="flex-grow text-center md:text-left leading-snug">
+              <div className="flex items-baseline gap-2 flex-wrap justify-center md:justify-start border-b border-zinc-800/60 pb-1 mb-1.5">
+                <span className="text-[16px] font-black text-yellow-400 font-sans tracking-tight">
+                  {state.saintName}
+                </span>
+                {state.saintType && (
+                  <span className="text-[11px] text-yellow-300/90 font-bold italic">
+                    — {state.saintType}
+                  </span>
+                )}
+              </div>
+              {state.saintBio && (
+                <p className="text-[12.5px] text-zinc-300 font-medium font-sans leading-relaxed text-justify">
+                  {state.saintBio}
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 3. News styled Lower third ticker banner */}
       {state.isTickerActive && state.tickerText && (

@@ -48,6 +48,10 @@ export const INITIAL_STATE: ProjectorState = {
   weatherDesc: '',
   weatherFontSize: 35,
   isAutoFontSize: false,
+  showSaintOnProjector: false,
+  saintName: '',
+  saintType: '',
+  saintBio: '',
 };
 
 // Pure utility functions to interact with LocalStorage safely (handles sandboxed iframe restrictions)
