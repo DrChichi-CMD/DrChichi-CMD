@@ -464,8 +464,9 @@ export default function Projector() {
             <div className="flex items-center gap-2.5 shrink-0 justify-center">
               <span className="text-2xl animate-pulse">😇</span>
               <div className="flex flex-col text-left">
-                <span className="text-[12px] font-black text-white tracking-wider uppercase font-sans leading-none">
-                  SANTORAL DE HOY
+                <span className="text-[12px] font-black tracking-wider uppercase font-sans leading-none">
+                  <span className="text-white">SANTORAL </span>
+                  <span className="text-yellow-400">DE HOY</span>
                 </span>
                 <span className="text-[9px] font-mono font-bold text-yellow-500/90 uppercase tracking-widest mt-1 leading-none">
                   CATÓLICO ARGENTINO
