@@ -2281,8 +2281,8 @@ export default function Controller() {
       
       // If the active background was one of the deleted backgrounds, select standard fallback
       if (selectedBgsToDelete.includes(state.activeBackgroundId)) {
-        // Find first remaining image background, or default to solid color
-        const firstRemaining = next.find(bg => bg.type === 'image' && bg.id !== 'solid');
+        // Find first remaining image or video background, or default to solid color
+        const firstRemaining = next.find(bg => (bg.type === 'image' || bg.type === 'video') && bg.id !== 'solid');
         setTimeout(() => {
           handleSelectBackground(firstRemaining ? firstRemaining.id : 'solid');
         }, 50);
@@ -2827,7 +2827,9 @@ export default function Controller() {
                   <div className="space-y-3 font-sans">
                     <div className="flex flex-col gap-1.5 border-t border-zinc-900/60 pt-2 mt-1">
                       <div className="flex items-center justify-between gap-1">
-                        <span className="text-[8px] uppercase font-black text-zinc-400 block font-sans">Galería de Imágenes de Fondo:</span>
+                        <span className="text-[8px] uppercase font-black text-zinc-400 block font-sans">
+                          {enabledFeatures.videos ? "Galería de Recursos para Fondos (Fotos/Videos):" : "Galería de Imágenes de Fondo:"}
+                        </span>
                         
                         <div className="flex items-center gap-1.5">
                           {isBgDeleteMode ? (
@@ -2848,7 +2850,7 @@ export default function Controller() {
                                 onClick={handleBatchDeleteBackgrounds}
                                 className={`text-[8px] font-black py-0.5 px-2 rounded-sm active:scale-95 flex items-center gap-1 font-sans cursor-pointer whitespace-nowrap border transition ${
                                   selectedBgsToDelete.length > 0
-                                    ? 'bg-red-950/40 hover:bg-red-955/60 border-red-900/50 text-red-400 font-extrabold'
+                                    ? 'bg-red-955/40 hover:bg-red-955/60 border-red-900/50 text-red-400 font-extrabold'
                                     : 'bg-zinc-950 text-zinc-600 border-zinc-900 cursor-not-allowed opacity-50'
                                 }`}
                               >
@@ -2864,9 +2866,9 @@ export default function Controller() {
                                   setSelectedBgsToDelete([]);
                                 }}
                                 className="text-[8.5px] bg-red-950/20 hover:bg-red-955/40 border border-red-900/30 text-red-400 font-bold py-0.5 px-2 rounded-sm active:scale-95 flex items-center gap-1 font-sans cursor-pointer whitespace-nowrap"
-                                title="Entrar en modo selección para eliminar cualquier imagen"
+                                title="Entrar en modo selección para eliminar cualquier imagen o video de fondo"
                               >
-                                🗑️ BORRAR IMÁGENES
+                                🗑️ BORRAR RECURSOS
                               </button>
                               <button
                                 type="button"
@@ -2875,6 +2877,15 @@ export default function Controller() {
                               >
                                 + SUBIR FOTO
                               </button>
+                              {enabledFeatures.videos && (
+                                <button
+                                  type="button"
+                                  onClick={() => videoFileInputRef.current?.click()}
+                                  className="text-[8px] bg-indigo-900/40 hover:bg-indigo-900/60 border border-indigo-805/60 text-indigo-300 font-bold py-0.5 px-2 rounded-sm active:scale-95 flex items-center gap-1 font-sans cursor-pointer whitespace-nowrap"
+                                >
+                                  + SUBIR VIDEO
+                                </button>
+                              )}
                             </>
                           )}
                           <input
@@ -2884,13 +2895,20 @@ export default function Controller() {
                             onChange={handleUploadImage}
                             className="hidden"
                           />
+                          <input
+                            type="file"
+                            ref={videoFileInputRef}
+                            accept="video/*"
+                            onChange={handleUploadVideo}
+                            className="hidden"
+                          />
                         </div>
                       </div>
                     </div>
 
-                    {/* Pre-rendered list of backgrounds - now expanded to 3 columns inside the wider panel */}
+                    {/* Pre-rendered list of backgrounds - displays images and videos based on enabledFeatures.videos */}
                     <div className="grid grid-cols-3 gap-2 max-h-[160px] overflow-y-auto p-1.5 bg-zinc-950/40 rounded border border-zinc-900 scrollbar-thin">
-                      {backgrounds.filter(bg => bg.type === 'image' && bg.id !== 'solid').map((bg) => (
+                      {backgrounds.filter(bg => (bg.type === 'image' || (enabledFeatures.videos && bg.type === 'video')) && bg.id !== 'solid').map((bg) => (
                         <BackgroundThumbnail
                           key={bg.id}
                           bg={bg}
@@ -3945,6 +3963,25 @@ export default function Controller() {
                         }`}
                       >
                         {enabledFeatures.letra ? 'Visible' : 'Bloqueado'}
+                      </button>
+                    </div>
+
+                    {/* Videos Toggle */}
+                    <div className="flex items-center justify-between p-2 bg-zinc-950 border border-zinc-900 rounded-lg">
+                      <div className="flex flex-col">
+                        <span className="text-[9.5px] font-black text-zinc-200 uppercase">🎬 Habilitar Videos de Fondo</span>
+                        <span className="text-[8px] text-zinc-500">Muestra el botón para subir y reproducir videos en bucle como fondo</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEnabledFeatures(prev => ({ ...prev, videos: !prev.videos }))}
+                        className={`px-3 py-1 text-[8.5px] font-bold tracking-wider rounded uppercase border transition duration-155 cursor-pointer ${
+                          enabledFeatures.videos 
+                            ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/50' 
+                            : 'bg-red-955/40 text-red-400 border-red-900/50'
+                        }`}
+                      >
+                        {enabledFeatures.videos ? 'Visible' : 'Bloqueado'}
                       </button>
                     </div>
 
