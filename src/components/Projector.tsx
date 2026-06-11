@@ -24,49 +24,49 @@ const hexToRgba = (hex: string, opacityPercent: number) => {
   return hex;
 };
 
-export default function Projector() {
+export default function Projector({ isPreviewMonitor = false }: { isPreviewMonitor?: boolean }) {
   const [state, setState] = useState<ProjectorState>(getLocalState);
   const [songs, setSongs] = useState<Song[]>(() => getLocalSongs(DEFAULT_SONGS));
   const [backgrounds, setBackgrounds] = useState<Background[]>(() => getLocalBackgrounds(DEFAULT_BACKGROUNDS));
+
+  useEffect(() => {
+    document.title = isPreviewMonitor ? 'VISTA PREVIA EN VIVO' : 'SISTEMA DE PROYECCIÓN';
+  }, [isPreviewMonitor]);
 
   const [controllerVideoUrl, setControllerVideoUrl] = useState<string | null>(null);
   const [controllerBackgroundUrl, setControllerBackgroundUrl] = useState<string | null>(null);
 
   const localResolvedVideoUrl = useResolvedVideoUrl(state.activeVideoUrl);
-  const resolvedVideoUrl = state.activeVideoUrl 
-    ? (controllerVideoUrl || localResolvedVideoUrl || state.activeVideoUrl) 
-    : null;
+  const resolvedVideoUrl = useMemo(() => {
+    if (!state.activeVideoUrl) return null;
+    if (state.activeVideoUrl.startsWith('db://')) {
+      return localResolvedVideoUrl;
+    }
+    if (state.activeVideoUrl.startsWith('blob:')) {
+      return localResolvedVideoUrl;
+    }
+    return state.activeVideoUrl;
+  }, [state.activeVideoUrl, localResolvedVideoUrl]);
 
   const projectorVideoRef = useRef<HTMLVideoElement>(null);
 
-  const [wifiCams, setWifiCams] = useState<{ id: string; name: string; ip: string; status: 'online' | 'offline' }[]>(() => {
-    try {
-      const saved = localStorage.getItem('church_wifi_cams');
-      return saved ? JSON.parse(saved) : [
-        { id: 'wifi-gopro-altar', name: 'GoPro Hero 11 (Altar Wi-Fi)', ip: '10.5.5.9:8080/live/gopro', status: 'online' },
-        { id: 'wifi-gopro-pulpito', name: 'GoPro Hero 10 (Púlpito Wi-Fi)', ip: '10.5.5.15:8080/live/pulpito', status: 'online' }
-      ];
-    } catch (e) {
-      return [];
-    }
-  });
-
-  // Effect to handle play/pause and muted state of background video Loop
+  // Sync state transitions & video coordinators
   useEffect(() => {
     const video = projectorVideoRef.current;
     if (video) {
-      video.muted = true; // Ensure it is programmatically muted to bypass autoplay blocking in all major browsers
-      if (resolvedVideoUrl) {
+      video.muted = true;
+      const targetUrl = controllerVideoUrl || resolvedVideoUrl;
+      if (targetUrl) {
         if (state.isVideoPlaying) {
-          video.play().catch(e => console.warn('Projector background video play error:', e));
+          video.play().catch(e => console.warn('Projector live background video play failed:', e));
         } else {
           video.pause();
         }
       }
     }
-  }, [state.isVideoPlaying, resolvedVideoUrl, projectorVideoRef.current]);
+  }, [state.isVideoPlaying, controllerVideoUrl, resolvedVideoUrl]);
 
-  // Effect to sync current timeline coordinates exactly
+  // Sync current timeline
   useEffect(() => {
     const video = projectorVideoRef.current;
     if (video && state.videoCurrentTime !== undefined) {
@@ -77,10 +77,9 @@ export default function Projector() {
     }
   }, [state.videoCurrentTime]);
 
-  // Instantiate the sync hub
   const hub = useMemo(() => new ProjectorHub(), []);
 
-  // Robust synchronization: Combined instant-events, direct memory window bus, & robust periodic localStorage-polling fallback
+  // Sync communication
   useEffect(() => {
     const handleSyncState = (
       newState: ProjectorState,
@@ -90,41 +89,15 @@ export default function Projector() {
       resBg?: string | null
     ) => {
       setState(prev => {
-        // Compare only critical structural fields to prevent unnecessary re-renders
-        const changed = 
-          prev.activeSongId !== newState.activeSongId ||
-          prev.activeSlideIndex !== newState.activeSlideIndex ||
-          prev.activeBackgroundId !== newState.activeBackgroundId ||
-          prev.isBlackout !== newState.isBlackout ||
-          prev.isHideLetters !== newState.isHideLetters ||
-          prev.isForceDimmed !== newState.isForceDimmed ||
-          prev.fontSize !== newState.fontSize ||
-          prev.fontColor !== newState.fontColor ||
-          prev.isBold !== newState.isBold ||
-          prev.alignment !== newState.alignment ||
-          prev.shadowEnabled !== newState.shadowEnabled ||
-          prev.isCameraActive !== newState.isCameraActive ||
-          prev.cameraDeviceId !== newState.cameraDeviceId ||
-          prev.activeVideoId !== newState.activeVideoId ||
-          prev.activeVideoUrl !== newState.activeVideoUrl ||
-          prev.isTickerActive !== newState.isTickerActive ||
-          prev.tickerText !== newState.tickerText ||
-          prev.tickerColor !== newState.tickerColor ||
-          prev.tickerFontSize !== newState.tickerFontSize ||
-          prev.tickerBgImg !== newState.tickerBgImg ||
-          prev.tickerSpeed !== newState.tickerSpeed ||
-          prev.tickerOpacity !== newState.tickerOpacity ||
-          prev.tickerTextColor !== newState.tickerTextColor ||
-          prev.tickerHideBg !== newState.tickerHideBg ||
-          prev.showWeatherOnProjector !== newState.showWeatherOnProjector ||
-          prev.weatherTemp !== newState.weatherTemp ||
-          prev.weatherDesc !== newState.weatherDesc ||
-          prev.isAutoFontSize !== newState.isAutoFontSize ||
-          prev.showSaintOnProjector !== newState.showSaintOnProjector ||
-          prev.saintName !== newState.saintName ||
-          prev.saintType !== newState.saintType ||
-          prev.saintBio !== newState.saintBio;
-        return changed ? newState : prev;
+        const keys1 = Object.keys(prev) as (keyof ProjectorState)[];
+        const keys2 = Object.keys(newState) as (keyof ProjectorState)[];
+        if (keys1.length !== keys2.length) return newState;
+        for (const key of keys1) {
+          if (prev[key] !== newState[key]) {
+            return newState;
+          }
+        }
+        return prev;
       });
       if (newSongs && Array.isArray(newSongs) && newSongs.length > 0) {
         setSongs(newSongs);
@@ -140,7 +113,6 @@ export default function Projector() {
       }
     };
 
-    // 1. Subscribe to BroadcastChannel & custom events
     const unsubscribe = hub.subscribe((message: ProjectorMessage) => {
       if (message.type === 'STATE_CHANGED') {
         handleSyncState(
@@ -155,12 +127,9 @@ export default function Projector() {
       }
     });
 
-    // 2. Direct Window Bus and LocalStorage Polling (bypasses browser sandoxing iframe blocks of LocalStorage)
     const pollInterval = setInterval(() => {
       try {
         let foundDirectSync = false;
-        
-        // A. Primary direct window memory sync (extremely fast & immune to iframe sandbox limits)
         try {
           const opener = window.opener || (window.parent && window.parent !== window ? window.parent : null);
           if (opener) {
@@ -175,42 +144,36 @@ export default function Projector() {
               );
               foundDirectSync = true;
             }
-            
-            // Send direct memory heartbeat to the controller
-            (opener as any).__CHURCH_PROJECTOR_ACTIVE_TIMESTAMP__ = Date.now();
+            if (isPreviewMonitor) {
+              (opener as any).__CHURCH_PREVIEW_ACTIVE_TIMESTAMP__ = Date.now();
+            } else {
+              (opener as any).__CHURCH_PROJECTOR_ACTIVE_TIMESTAMP__ = Date.now();
+            }
           }
-        } catch (openerErr) {
-          // If cross-origin/sandbox error occurs, fail-safe to standard LocalStorage
-        }
+        } catch (openerErr) {}
 
-        // B. Secondary standard LocalStorage fallback
         if (!foundDirectSync) {
           const polledState = getLocalState();
           const polledSongs = getLocalSongs(DEFAULT_SONGS);
           const polledBackgrounds = getLocalBackgrounds(DEFAULT_BACKGROUNDS);
           handleSyncState(polledState, polledSongs, polledBackgrounds);
-          try {
-            const saved = localStorage.getItem('church_wifi_cams');
-            if (saved) {
-              setWifiCams(JSON.parse(saved));
-            }
-          } catch(e) {}
         }
       } catch (err) {
         console.error('Projector sync polling error:', err);
       }
-    }, 150); // Polling at 150ms for ultra-responsive update feedback
+    }, 150);
 
-    // 3. Heartbeat and handshaking live indicators
-    hub.broadcast({ type: 'PONG', hasActiveProjector: true });
+    hub.broadcast({ type: 'PONG', hasActiveProjector: !isPreviewMonitor, hasActivePreview: isPreviewMonitor });
     const pingInterval = setInterval(() => {
-      hub.broadcast({ type: 'PONG', hasActiveProjector: true });
-      
-      // Also register handshake in window opener if available
+      hub.broadcast({ type: 'PONG', hasActiveProjector: !isPreviewMonitor, hasActivePreview: isPreviewMonitor });
       try {
         const opener = window.opener || (window.parent && window.parent !== window ? window.parent : null);
         if (opener) {
-          (opener as any).__CHURCH_PROJECTOR_ACTIVE_TIMESTAMP__ = Date.now();
+          if (isPreviewMonitor) {
+            (opener as any).__CHURCH_PREVIEW_ACTIVE_TIMESTAMP__ = Date.now();
+          } else {
+            (opener as any).__CHURCH_PROJECTOR_ACTIVE_TIMESTAMP__ = Date.now();
+          }
         }
       } catch (e) {}
     }, 1500);
@@ -223,7 +186,7 @@ export default function Projector() {
     };
   }, [hub]);
 
-  // Find active items
+  // Derived state items
   const activeSong = useMemo(() => {
     if (!state.activeSongId) return null;
     return songs.find(s => s.id === state.activeSongId) || null;
@@ -242,152 +205,117 @@ export default function Projector() {
   }, [state.activeBackgroundId, backgrounds, state.solidBackgroundColor]);
 
   const localResolvedBackgroundUrl = useResolvedVideoUrl(activeBackground?.url);
-  const resolvedBackgroundUrl = (activeBackground && activeBackground.id === 'solid')
-    ? (state.solidBackgroundColor || '#121214')
-    : (controllerBackgroundUrl || localResolvedBackgroundUrl || activeBackground?.url || '');
 
-  // Determine slide text
-  const currentSlideText = useMemo(() => {
-    if (!activeSong || state.isHideLetters) return '';
-    const idx = state.activeSlideIndex;
-    if (idx >= 0 && idx < activeSong.slides.length) {
-      return activeSong.slides[idx];
+  // CLONE PREVIEW BACKGROUND IMAGE PATH RESOLUTION (Bulletproof matching)
+  const safeBackgroundUrl = useMemo(() => {
+    if (controllerBackgroundUrl) return controllerBackgroundUrl;
+    if (!activeBackground?.url) return '';
+    if (activeBackground.url.startsWith('db://') || activeBackground.url.startsWith('blob:')) {
+      return localResolvedBackgroundUrl || '';
     }
-    return '';
-  }, [activeSong, state.activeSlideIndex, state.isHideLetters]);
+    return activeBackground.url;
+  }, [activeBackground, controllerBackgroundUrl, localResolvedBackgroundUrl]);
 
-  // Determine slide image
-  const currentSlideImg = useMemo(() => {
-    if (!activeSong || state.isHideLetters) return '';
-    const idx = state.activeSlideIndex;
-    if (activeSong.slideImages && idx >= 0 && idx < activeSong.slideImages.length) {
-      return activeSong.slideImages[idx] || '';
-    }
-    return '';
-  }, [activeSong, state.activeSlideIndex, state.isHideLetters]);
-
-  // Keep static backgrounds mounted underneath as a safety fallback layer so the screen never goes completely black during loading or transition gaps
-  const isImageOrSolidHidden = false;
-
-  // Automatic dimming logic:
-  // Fades out background colors to low opacity when letters are present to maintain high contrast ("fondo clarito").
-  // When no song is loaded or letters are hidden, background remains fully bright.
-  const isDimmed = useMemo(() => {
-    if (state.isForceDimmed !== null) {
-      return state.isForceDimmed;
-    }
-    return !!(activeSong && !state.isHideLetters && currentSlideText.trim().length > 0);
-  }, [state.isForceDimmed, activeSong, state.isHideLetters, currentSlideText]);
-
-  // Dynamic automatic font size scaling helper
-  const projectedFontSize = useMemo(() => {
-    if (state.isAutoFontSize && currentSlideText) {
-      const len = currentSlideText.length;
-      if (len > 80) {
-        const factor = Math.max(0.4, 80 / len);
-        return Math.max(32, Math.floor(state.fontSize * factor));
-      }
-    }
-    return state.fontSize;
-  }, [state.isAutoFontSize, currentSlideText, state.fontSize]);
-
-  // Inline styling for background depending on its type
-  const backgroundStyle = useMemo(() => {
-    if (!activeBackground) return {};
+  const previewBgInline = useMemo(() => {
     if (state.activeBackgroundId === 'solid') {
       return { backgroundColor: state.solidBackgroundColor || '#121214' };
     }
-    if (activeBackground.type === 'gradient') {
-      return { background: activeBackground.url };
-    } else {
-      return { backgroundImage: `url(${resolvedBackgroundUrl || activeBackground.url})`, backgroundSize: 'cover', backgroundPosition: 'center' };
+    if (activeBackground?.type === 'gradient') {
+      return { background: activeBackground?.url };
     }
-  }, [activeBackground, state.activeBackgroundId, state.solidBackgroundColor, resolvedBackgroundUrl]);
+    return { 
+      backgroundImage: safeBackgroundUrl ? `url(${safeBackgroundUrl})` : 'none', 
+      backgroundSize: 'cover', 
+      backgroundPosition: 'center' 
+    };
+  }, [activeBackground, state.activeBackgroundId, state.solidBackgroundColor, safeBackgroundUrl]);
 
-  // Complete Blackout override
+  // CLONE PREVIEW VIDEO PLAYBACK (Bulletproof matching)
+  const mainPreviewVideoUrl = useMemo(() => {
+    if (!state.activeVideoUrl) return null;
+    return controllerVideoUrl || resolvedVideoUrl || null;
+  }, [state.activeVideoUrl, controllerVideoUrl, resolvedVideoUrl]);
+
+  const isCurrentlyPreviewDimmed = useMemo(() => {
+    if (state.isForceDimmed !== null) return state.isForceDimmed;
+    return !!(activeSong && !state.isHideLetters && activeSong.slides[state.activeSlideIndex]);
+  }, [state.isForceDimmed, activeSong, state.isHideLetters, state.activeSlideIndex]);
+
+  // Blackout override
   if (state.isBlackout) {
     return (
       <div id="projector-blackout-screen" className="fixed inset-0 bg-black cursor-none select-none z-[9999]" />
     );
   }
 
-  // Text Alignment classes
-  const textAlignmentClass = {
-    center: 'text-center',
-    left: 'text-left',
-    right: 'text-right'
-  }[state.alignment] || 'text-center';
+  // Adjust font size scaling helper
+  const projectedFontSize = useMemo(() => {
+    if (activeSong && activeSong.slides[state.activeSlideIndex]) {
+      const text = activeSong.slides[state.activeSlideIndex];
+      if (state.isAutoFontSize && text) {
+        const len = text.length;
+        if (len > 80) {
+          const factor = Math.max(0.4, 80 / len);
+          return Math.max(32, Math.floor(state.fontSize * factor));
+        }
+      }
+    }
+    return state.fontSize;
+  }, [state.isAutoFontSize, activeSong, state.activeSlideIndex, state.fontSize]);
 
   return (
     <div 
       id="projector-container"
-      className="fixed inset-0 bg-black overflow-hidden flex flex-col justify-center items-center select-none cursor-none z-50 px-12 md:px-24"
+      className="fixed inset-0 bg-black overflow-hidden flex flex-col justify-center items-center select-none cursor-none z-50 text-center"
     >
-      {/* 1. Underlying Background with animated transitions */}
-      <AnimatePresence mode="popLayout">
-        {!isImageOrSolidHidden && activeBackground && (
-          activeBackground.type === 'video' ? (
-            <motion.video
-              key={activeBackground?.id || 'empty-bg'}
-              src={resolvedBackgroundUrl || activeBackground.url}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: isDimmed ? 0.35 : 1.0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.8 }}
-              className="absolute inset-0 w-full h-full object-cover z-0 transition-all duration-700"
-              autoPlay
-              muted
-              loop
-              playsInline
-            />
-          ) : (
-            <motion.div
-              key={activeBackground?.id || 'empty-bg'}
-              style={backgroundStyle}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: isDimmed ? 0.35 : 1.0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.8 }}
-              className="absolute inset-0 z-0 transition-all duration-700"
-            />
-          )
-        )}
-      </AnimatePresence>
-
-      {/* Video Background / Main Loop if active */}
-      {resolvedVideoUrl && (
+      {/* 1. Underlying Background with exact cloned styles of the preview */}
+      {activeBackground?.type === 'video' ? (
         <video
-          ref={projectorVideoRef}
-          key={resolvedVideoUrl}
-          src={resolvedVideoUrl}
-          className="absolute inset-0 w-full h-full object-cover z-0"
-          style={{ opacity: isDimmed ? 0.35 : 1.0 }}
-          autoPlay={state.isVideoPlaying}
+          src={safeBackgroundUrl || ''}
+          className="absolute inset-0 w-full h-full object-cover transition-all duration-500 z-0"
+          style={{ opacity: isCurrentlyPreviewDimmed ? 0.35 : 1 }}
+          autoPlay
           muted
           loop
           playsInline
-          onCanPlay={(e) => {
-            if (state.isVideoPlaying) {
-              e.currentTarget.play().catch(err => console.warn("Video play failed:", err));
-            }
+        />
+      ) : (
+        <div 
+          className="absolute inset-0 transition-all duration-500 z-0"
+          style={{
+            ...previewBgInline,
+            opacity: isCurrentlyPreviewDimmed ? 0.35 : 1
           }}
         />
       )}
 
+      {/* 2. Actual video loop overlay if playing */}
+      {mainPreviewVideoUrl && (
+        <video
+          ref={projectorVideoRef}
+          key={mainPreviewVideoUrl}
+          src={mainPreviewVideoUrl}
+          className="absolute inset-0 w-full h-full object-cover z-10"
+          style={{ opacity: isCurrentlyPreviewDimmed ? 0.35 : 1 }}
+          autoPlay={state.isVideoPlaying}
+          muted
+          loop
+          playsInline
+        />
+      )}
 
-      {/* Dim Overlay when faded to handle text contrast perfectly on colored slides */}
+      {/* 3. Darkening contrast overlay */}
       <div 
-        style={{ zIndex: 2 }}
-        className={`absolute inset-0 bg-black/30 pointer-events-none transition-opacity duration-700 ${
-          isDimmed ? 'opacity-100' : 'opacity-0'
+        className={`absolute inset-0 bg-black/25 transition-opacity duration-500 z-20 ${
+          isCurrentlyPreviewDimmed ? 'opacity-100' : 'opacity-0'
         }`} 
       />
 
-      {/* Weather overlay on top right corner in red with size 35 if configured and no active song is loaded */}
+      {/* 4. Weather info box (if enabled & config is available & no song is playing) */}
       {state.showWeatherOnProjector && !state.activeSongId && (state.weatherTemp || state.weatherDesc) && (
         <div 
           style={{
-            zIndex: 50,
+            zIndex: 40,
             fontSize: `${state.weatherFontSize || 35}px`,
             color: '#ef4444',
             fontWeight: 800,
@@ -401,17 +329,17 @@ export default function Projector() {
         </div>
       )}
 
-      {/* 2. Lyrics Overlay with custom fluid size and animations */}
-      <div style={{ zIndex: 10 }} className="relative w-full max-w-[95vw] mx-auto flex flex-col justify-center min-h-[60vh] pb-12">
+      {/* 5. Slides, Lyrics image/text exactly as structured in preview box but full dimensions */}
+      <div style={{ zIndex: 30 }} className="relative w-full max-w-[95vw] mx-auto flex flex-col justify-center min-h-[60vh] pb-12 px-12 md:px-24">
         <AnimatePresence mode="wait">
-          {currentSlideText || currentSlideImg ? (
+          {!state.isHideLetters && activeSong && (activeSong.slides[state.activeSlideIndex] || (activeSong.slideImages && activeSong.slideImages[state.activeSlideIndex])) ? (
             <motion.div
               key={`${state.activeSongId}-${state.activeSlideIndex}`}
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={{ duration: 0.35, ease: 'easeOut' }}
-              className={`w-full ${textAlignmentClass} leading-snug tracking-wide flex flex-col items-center justify-center`}
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.98 }}
+              transition={{ duration: 0.25 }}
+              className={`w-full leading-snug tracking-wide flex flex-col items-center justify-center`}
               style={{
                 fontSize: `${projectedFontSize}px`,
                 color: state.fontColor,
@@ -419,34 +347,38 @@ export default function Projector() {
                 textShadow: state.shadowEnabled 
                   ? '0px 4px 10px rgba(0, 0, 0, 0.95), 0px 2px 4px rgba(0, 0, 0, 0.9)' 
                   : 'none',
-                fontFamily: 'system-ui, -apple-system, sans-serif'
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                textAlign: state.alignment
               }}
             >
-              {currentSlideImg && (
-                <div className="flex justify-center items-center mb-4 select-none">
+              {/* Slide image if present */}
+              {activeSong.slideImages && activeSong.slideImages[state.activeSlideIndex] && (
+                <div className="flex justify-center items-center mb-6 select-none">
                   <img
                     referrerPolicy="no-referrer"
-                    src={currentSlideImg}
+                    src={activeSong.slideImages[state.activeSlideIndex]}
                     alt="Ilustración de estrofa"
-                    className="max-h-[45vh] w-auto max-w-[85vw] object-contain rounded-xl border border-white/20 shadow-2xl transition-all duration-300"
+                    className="max-h-[50vh] w-auto max-w-[85vw] object-contain rounded-xl border border-white/20 shadow-2xl transition-all duration-300"
                   />
                 </div>
               )}
-              {currentSlideText ? (
+
+              {/* Slide text if present */}
+              {activeSong.slides[state.activeSlideIndex] && (
                 <div className="w-full">
-                  {currentSlideText.split('\n').map((line, lIdx) => (
-                    <div key={lIdx} className="mb-2 last:mb-0">
+                  {activeSong.slides[state.activeSlideIndex].split('\n').map((line, lidx) => (
+                    <div key={lidx} className="mb-2 last:mb-0">
                       {line}
                     </div>
                   ))}
                 </div>
-              ) : null}
+              )}
             </motion.div>
           ) : null}
         </AnimatePresence>
       </div>
 
-      {/* Santoral legend overlay (Lower Third / Leyenda) */}
+      {/* 6. Santoral católico legend overlay (if active & no active song is loaded) */}
       <AnimatePresence>
         {state.showSaintOnProjector && !state.activeSongId && state.saintName && (
           <motion.div
@@ -460,7 +392,6 @@ export default function Projector() {
             }}
             className="absolute left-1/2 -translate-x-1/2 w-[90%] max-w-[850px] bg-black/85 backdrop-blur-md rounded-xl border border-yellow-500/40 px-6 py-4 shadow-[0_15px_40px_rgba(0,0,0,0.8)] flex flex-col md:flex-row items-center gap-3 md:gap-5 select-none pointer-events-none transition-all duration-300"
           >
-            {/* Yellow icon and branding indicators */}
             <div className="flex items-center gap-2.5 shrink-0 justify-center">
               <span className="text-2xl animate-pulse">😇</span>
               <div className="flex flex-col text-left">
@@ -496,7 +427,7 @@ export default function Projector() {
         )}
       </AnimatePresence>
 
-      {/* 3. News styled Lower third ticker banner */}
+      {/* 7. Cloned News styled bottom ticker scrolling bar */}
       {state.isTickerActive && state.tickerText && (
         <div 
           style={{ 
@@ -511,7 +442,6 @@ export default function Projector() {
             state.tickerHideBg ? '' : 'shadow-[0_-5px_25px_rgba(0,0,0,0.6)] border-t border-white/10 backdrop-blur-md'
           }`}
         >
-          {/* Ticker scrolling lane */}
           <div className={`flex-grow overflow-hidden relative w-full h-full flex items-center select-none ${
             state.tickerHideBg ? '' : 'bg-black/10'
           }`}>

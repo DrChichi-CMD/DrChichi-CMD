@@ -129,7 +129,10 @@ function BackgroundThumbnail({
 
 function getSharedMobileCameraUrl(roomId: string, name?: string): string {
   if (typeof window === 'undefined') return '';
-  const host = window.location.host;
+  let host = window.location.host;
+  if (host.includes('ais-dev-')) {
+    host = host.replace('ais-dev-', 'ais-pre-');
+  }
   const finalName = name || 'Cámara Celular';
   return `${window.location.protocol}//${host}/?mode=cam&room=${encodeURIComponent(roomId)}&name=${encodeURIComponent(finalName)}`;
 }
@@ -509,7 +512,7 @@ export default function Controller() {
   const [state, setState] = useState<ProjectorState>(getLocalState);
   
   // Compact Auxiliary Menu tab
-  const [activeSubTab, setActiveSubTab] = useState<'none' | 'backgrounds' | 'fonts' | 'legends'>('none');
+  const [activeSubTab, setActiveSubTab] = useState<'none' | 'backgrounds' | 'fonts' | 'legends' | 'videos'>('none');
   const [activeDock1Tab, setActiveDock1Tab] = useState<'songs' | 'videos'>('songs');
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
 
@@ -532,15 +535,21 @@ export default function Controller() {
 
   // Connection state with secondary projection window
   const [isProjectorConnected, setIsProjectorConnected] = useState<boolean>(false);
+  const [isPreviewConnected, setIsPreviewConnected] = useState<boolean>(false);
   const [showPopupWarning, setShowPopupWarning] = useState<boolean>(false);
   const projectorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const projectorWindowRef = useRef<Window | null>(null);
+  const previewTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const previewWindowRef = useRef<Window | null>(null);
 
-  // Automatically close projector window if the controller app is closed
+  // Automatically close projector and preview window if the controller app is closed
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (projectorWindowRef.current && !projectorWindowRef.current.closed) {
         projectorWindowRef.current.close();
+      }
+      if (previewWindowRef.current && !previewWindowRef.current.closed) {
+        previewWindowRef.current.close();
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -603,6 +612,8 @@ export default function Controller() {
   const [operatorInputCode, setOperatorInputCode] = useState('');
   const [apiRooms, setApiRooms] = useState<any[]>([]);
   const [showQRCodeModal, setShowQRCodeModal] = useState(false);
+  const [showCameraControlModal, setShowCameraControlModal] = useState(false);
+  const [cameraQrUrl, setCameraQrUrl] = useState('');
   const [loadingRooms, setLoadingRooms] = useState(false);
 
   // Administrative Panel States
@@ -794,6 +805,7 @@ export default function Controller() {
     if (!enabledFeatures.fondos && activeSubTab === 'backgrounds') setActiveSubTab('none');
     if (!enabledFeatures.letra && activeSubTab === 'fonts') setActiveSubTab('none');
     if (!enabledFeatures.leyenda && activeSubTab === 'legends') setActiveSubTab('none');
+    if (!enabledFeatures.videos && activeSubTab === 'videos') setActiveSubTab('none');
   }, [enabledFeatures, activeSubTab]);
 
   const handleVerifyPassword = (e?: React.FormEvent) => {
@@ -1693,14 +1705,22 @@ export default function Controller() {
 
 
 
+  // Local Video Preview states
+  const [localPreviewVideoId, setLocalPreviewVideoId] = useState<string | null>(null);
+  const localPreviewVideo = songs.find(s => s.id === localPreviewVideoId) || null;
+  const resolvedLocalPreviewUrl = useResolvedVideoUrl(localPreviewVideo?.videoUrl);
+
   // Sync and control play/pause state for loaded video elements in the preview monitor
   const previewVideoRef = useRef<HTMLVideoElement>(null);
   const resolvedVideoUrl = useResolvedVideoUrl(state.activeVideoUrl);
 
+  const isLiveVideoActive = !!state.activeVideoUrl;
+  const mainPreviewVideoUrl = isLiveVideoActive ? resolvedVideoUrl : null;
+
   useEffect(() => {
     const video = previewVideoRef.current;
     if (video) {
-      if (resolvedVideoUrl) {
+      if (mainPreviewVideoUrl) {
         if (state.isVideoPlaying) {
           video.play().catch(e => console.warn('Preview video play prevented:', e));
         } else {
@@ -1708,17 +1728,17 @@ export default function Controller() {
         }
       }
     }
-  }, [state.isVideoPlaying, resolvedVideoUrl]);
+  }, [state.isVideoPlaying, mainPreviewVideoUrl]);
 
   // Instantly keep controller preview video elements synchronized to the videoCurrentTime state
   useEffect(() => {
     const video = previewVideoRef.current;
-    if (video && state.videoCurrentTime !== undefined) {
+    if (isLiveVideoActive && video && state.videoCurrentTime !== undefined) {
       if (Math.abs(video.currentTime - state.videoCurrentTime) > 0.4) {
         video.currentTime = state.videoCurrentTime;
       }
     }
-  }, [state.videoCurrentTime]);
+  }, [state.videoCurrentTime, isLiveVideoActive]);
 
   // Song creation form states
   const [isAddingSong, setIsAddingSong] = useState(false);
@@ -1763,7 +1783,9 @@ export default function Controller() {
   // Effect for WebRTC cellphone transmitter matching & signaling loop
   // Effect to connect to the custom WebSocket room as a viewer
   useEffect(() => {
-    if (state.cameraDeviceId !== 'webrtc-phone' || !state.isCameraActive) {
+    // Camera streaming system is disabled as requested by user
+    const shouldConnect = false;
+    if (!shouldConnect) {
       setOperatorWsStatus('disabled');
       if (operatorWsRef.current) {
         operatorWsRef.current.close();
@@ -1833,7 +1855,25 @@ export default function Controller() {
         ws.close();
       }
     };
-  }, [state.cameraDeviceId, state.isCameraActive, cameraRoomId]);
+  }, [state.cameraDeviceId, state.isCameraActive, cameraRoomId, showCameraControlModal]);
+
+  // Effect to generate QR Code when Camera Control Modal is opened
+  useEffect(() => {
+    if (showCameraControlModal) {
+      let host = window.location.host;
+      if (host.includes('ais-dev-')) {
+        host = host.replace('ais-dev-', 'ais-pre-');
+      }
+      const transmissionUrl = `${window.location.protocol}//${host}/?mode=cam&room=${encodeURIComponent(cameraRoomId)}`;
+      import('qrcode').then((QRCodeModule) => {
+        QRCodeModule.default.toDataURL(transmissionUrl, { margin: 2, scale: 6 })
+          .then(url => setCameraQrUrl(url))
+          .catch(err => console.error('Error generating camera QR:', err));
+      }).catch(err => {
+        console.warn('QRCode dynamic load issue:', err);
+      });
+    }
+  }, [showCameraControlModal, cameraRoomId]);
 
   // Find active song and background details
   const activeSong = useMemo(() => {
@@ -2005,11 +2045,32 @@ export default function Controller() {
     }
   }, [state, songs, backgrounds, hub, resolvedVideoUrl, resolvedBackgroundUrl]);
 
-  // Handle Handshake responses and bidirectional memory/event connectivity with the projector screen
+  // Handle Handshake responses and bidirectional memory/event connectivity with the projector & preview screens
   useEffect(() => {
     const unsubscribe = hub.subscribe((message: ProjectorMessage) => {
       if (message.type === 'PONG') {
-        setIsProjectorConnected(true);
+        const hasProj = (message as any).hasActiveProjector !== false;
+        const hasPrev = !!(message as any).hasActivePreview;
+
+        if (hasProj) {
+          setIsProjectorConnected(true);
+          if (projectorTimeoutRef.current) {
+            clearTimeout(projectorTimeoutRef.current);
+          }
+          projectorTimeoutRef.current = setTimeout(() => {
+            setIsProjectorConnected(false);
+          }, 5000);
+        }
+
+        if (hasPrev) {
+          setIsPreviewConnected(true);
+          if (previewTimeoutRef.current) {
+            clearTimeout(previewTimeoutRef.current);
+          }
+          previewTimeoutRef.current = setTimeout(() => {
+            setIsPreviewConnected(false);
+          }, 5000);
+        }
         
         // Projector signaling connection/update. Send active state and data instantly so it renders IMMEDIATELY.
         hub.broadcast({
@@ -2020,20 +2081,10 @@ export default function Controller() {
           resolvedVideoUrl: resolvedVideoUrlRef.current,
           resolvedBackgroundUrl: resolvedBackgroundUrlRef.current
         });
-        
-        // Reset timeout
-        if (projectorTimeoutRef.current) {
-          clearTimeout(projectorTimeoutRef.current);
-        }
-        
-        // If we don't hear from the projector in 5 seconds, mark as disconnected
-        projectorTimeoutRef.current = setTimeout(() => {
-          setIsProjectorConnected(false);
-        }, 5000);
       }
     });
 
-    // Send a periodic Ping to verify the projector status
+    // Send a periodic Ping to verify status
     const pingInterval = setInterval(() => {
       hub.broadcast({ type: 'PING' });
       
@@ -2042,6 +2093,10 @@ export default function Controller() {
       if (lastMemoryPulse && Date.now() - lastMemoryPulse < 4500) {
         setIsProjectorConnected(true);
       }
+      const lastPreviewPulse = (window as any).__CHURCH_PREVIEW_ACTIVE_TIMESTAMP__;
+      if (lastPreviewPulse && Date.now() - lastPreviewPulse < 4500) {
+        setIsPreviewConnected(true);
+      }
     }, 2000);
 
     return () => {
@@ -2049,6 +2104,9 @@ export default function Controller() {
       clearInterval(pingInterval);
       if (projectorTimeoutRef.current) {
         clearTimeout(projectorTimeoutRef.current);
+      }
+      if (previewTimeoutRef.current) {
+        clearTimeout(previewTimeoutRef.current);
       }
       hub.close();
     };
@@ -2059,9 +2117,10 @@ export default function Controller() {
 
   // Filtered song list for the library search
   const filteredSongs = useMemo(() => {
-    if (!searchQuery.trim()) return songs;
+    const nonVideoSongs = songs.filter(s => !s.isVideo);
+    if (!searchQuery.trim()) return nonVideoSongs;
     const q = searchQuery.toLowerCase();
-    return songs.filter(
+    return nonVideoSongs.filter(
       s => s.title.toLowerCase().includes(q) || 
       (s.author && s.author.toLowerCase().includes(q)) ||
       s.lyrics.toLowerCase().includes(q)
@@ -2153,7 +2212,10 @@ export default function Controller() {
   const handleSelectBackground = (bgId: string) => {
     updateState(prev => ({
       ...prev,
-      activeBackgroundId: bgId
+      activeBackgroundId: bgId,
+      activeVideoId: null,
+      activeVideoUrl: null,
+      isVideoPlaying: false
     }));
   };
 
@@ -2330,21 +2392,38 @@ export default function Controller() {
     setInputVideoUrl('');
   };
 
-  const handleVideoSongUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoSongUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const objectUrl = URL.createObjectURL(file);
-    const newSong: Song = {
-      id: `video-song-uploaded-${Date.now()}`,
-      title: `📂 ${file.name}`,
-      author: 'Video subido',
-      lyrics: '',
-      slides: [''],
-      isVideo: true,
-      videoUrl: objectUrl
-    };
-    setSongs(prev => [newSong, ...prev]);
-    setIsAddingVideo(false);
+    try {
+      const dbKey = `video-uploaded-song-${Date.now()}`;
+      await saveMediaBlob(dbKey, file);
+      const newSong: Song = {
+        id: dbKey,
+        title: `📂 ${file.name}`,
+        author: 'Video subido',
+        lyrics: '',
+        slides: [''],
+        isVideo: true,
+        videoUrl: `db://${dbKey}`
+      };
+      setSongs(prev => [newSong, ...prev]);
+      setIsAddingVideo(false);
+    } catch (err) {
+      console.error("Error saving uploaded video to DB:", err);
+      const objectUrl = URL.createObjectURL(file);
+      const newSong: Song = {
+        id: `video-song-uploaded-${Date.now()}`,
+        title: `📂 [Local] ${file.name}`,
+        author: 'Video subido',
+        lyrics: '',
+        slides: [''],
+        isVideo: true,
+        videoUrl: objectUrl
+      };
+      setSongs(prev => [newSong, ...prev]);
+      setIsAddingVideo(false);
+    }
   };
 
   // Save changes during inline editing
@@ -2622,16 +2701,41 @@ export default function Controller() {
     }
   };
 
+  const openPreviewWindow = () => {
+    try {
+      const win = window.open('?mode=preview', 'church_preview', 'width=480,height=270,menubar=no,toolbar=no,status=no,resizable=yes');
+      if (!win || win.closed || typeof win.closed === 'undefined') {
+        setShowPopupWarning(true);
+        previewWindowRef.current = null;
+      } else {
+        setShowPopupWarning(false);
+        previewWindowRef.current = win;
+      }
+    } catch (e) {
+      console.error('Error opening preview window:', e);
+      setShowPopupWarning(true);
+      previewWindowRef.current = null;
+    }
+  };
+
   // Preview styling variables
   const isCurrentlyPreviewDimmed = state.isForceDimmed !== null 
     ? state.isForceDimmed 
     : !!(activeSong && !state.isHideLetters && activeSong.slides[state.activeSlideIndex]);
 
+  const safeBackgroundUrl = useMemo(() => {
+    if (!activeBackground?.url) return '';
+    if (activeBackground.url.startsWith('db://')) {
+      return resolvedBackgroundUrl || '';
+    }
+    return resolvedBackgroundUrl || activeBackground.url;
+  }, [activeBackground, resolvedBackgroundUrl]);
+
   const previewBgInline = state.activeBackgroundId === 'solid'
     ? { backgroundColor: state.solidBackgroundColor || '#121214' }
     : activeBackground?.type === 'gradient'
       ? { background: activeBackground?.url }
-      : { backgroundImage: `url(${resolvedBackgroundUrl || activeBackground?.url})`, backgroundSize: 'cover', backgroundPosition: 'center' };
+      : { backgroundImage: safeBackgroundUrl ? `url(${safeBackgroundUrl})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' };
 
   const selectedSkinData = SKINS[activeSkin as keyof typeof SKINS] || SKINS.default;
 
@@ -2848,20 +2952,6 @@ export default function Controller() {
                 >
                   <Plus className="w-2.5 h-2.5" /> AÑADIR NUEVA CANCIÓN
                 </button>
-
-                {enabledFeatures.videos && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setInputVideoName('');
-                      setInputVideoUrl('');
-                      setIsAddingVideo(true);
-                    }}
-                    className="py-1 w-full flex items-center justify-center gap-1 rounded bg-violet-750 hover:bg-violet-650 text-white font-extrabold text-[9px] font-sans border border-violet-850 transition active:scale-95 cursor-pointer"
-                  >
-                    <Video className="w-2.5 h-2.5" /> AÑADIR NUEVO VIDEO (.MP4)
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -2922,7 +3012,7 @@ export default function Controller() {
               {/* Fake Background */}
               {activeBackground?.type === 'video' && !state.isBlackout ? (
                 <video
-                  src={resolvedBackgroundUrl || activeBackground?.url}
+                  src={safeBackgroundUrl || ''}
                   className="absolute inset-0 w-full h-full object-cover transition-all duration-500"
                   style={{ opacity: isCurrentlyPreviewDimmed ? 0.35 : 1 }}
                   autoPlay
@@ -2941,17 +3031,19 @@ export default function Controller() {
               )}
 
               {/* Actual Video Playback in preview */}
-              {resolvedVideoUrl && (
+              {mainPreviewVideoUrl && (
                 <video
                   ref={previewVideoRef}
-                  src={resolvedVideoUrl}
+                  key={mainPreviewVideoUrl}
+                  src={mainPreviewVideoUrl}
                   className="absolute inset-0 w-full h-full object-cover"
                   style={{ opacity: state.isBlackout ? 0 : (isCurrentlyPreviewDimmed ? 0.35 : 1) }}
                   muted
                   loop
+                  playsInline
                   onTimeUpdate={(e) => {
                     const el = e.currentTarget;
-                    if (state.isVideoPlaying) {
+                    if (isLiveVideoActive && state.isVideoPlaying) {
                       updateState(prev => ({ 
                         ...prev, 
                         videoCurrentTime: el.currentTime,
@@ -2961,7 +3053,9 @@ export default function Controller() {
                   }}
                   onLoadedMetadata={(e) => {
                     const el = e.currentTarget;
-                    updateState(prev => ({ ...prev, videoDuration: el.duration || 0 }));
+                    if (isLiveVideoActive) {
+                      updateState(prev => ({ ...prev, videoDuration: el.duration || 0 }));
+                    }
                   }}
                 />
               )}
@@ -3282,7 +3376,10 @@ export default function Controller() {
                             updateState(prev => ({
                               ...prev,
                               solidBackgroundColor: newColor,
-                              activeBackgroundId: 'solid'
+                              activeBackgroundId: 'solid',
+                              activeVideoId: null,
+                              activeVideoUrl: null,
+                              isVideoPlaying: false
                             }));
                           }}
                           className="w-10 h-8 bg-transparent border-0 rounded cursor-pointer shrink-0"
@@ -3292,7 +3389,10 @@ export default function Controller() {
                           onClick={() => {
                             updateState(prev => ({
                               ...prev,
-                              activeBackgroundId: 'solid'
+                              activeBackgroundId: 'solid',
+                              activeVideoId: null,
+                              activeVideoUrl: null,
+                              isVideoPlaying: false
                             }));
                           }}
                           className={`flex-grow py-1.5 text-[8.5px] uppercase font-black tracking-wider rounded border transition ${
@@ -3617,15 +3717,256 @@ export default function Controller() {
                             );
                           })}
                         </div>
+                      </div>
+                    </div>
 
-                        {/* Hidden input for ticker custom image upload */}
-                        <input
-                          ref={tickerImageInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleUploadTickerImage}
-                          className="hidden"
-                        />
+                    {/* Hidden input for ticker custom image upload */}
+                    <input
+                      ref={tickerImageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleUploadTickerImage}
+                      className="hidden"
+                    />
+                  </div>
+                )}
+
+                {/* SUBTAB 5: VIDEOS LIBRARY & CONTROLLER inside the popover area */}
+                {activeSubTab === 'videos' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 font-sans h-full">
+                    {/* Column 1: Selector de Video */}
+                    <div className="space-y-2 flex flex-col justify-between">
+                      <div className="space-y-1">
+                        <span className="text-[8px] font-black text-zinc-400 uppercase block font-sans">
+                          1. SELECCIONAR VIDEO:
+                        </span>
+                        <div className="max-h-[120px] lg:max-h-[140px] overflow-y-auto space-y-1.5 border border-zinc-900 bg-black/40 p-1.5 rounded pr-1 scrollbar-thin">
+                          {songs.filter(s => s.isVideo).length === 0 ? (
+                            <div className="p-3 text-center text-zinc-500 text-[9px] italic font-sans animate-pulse">
+                              Sin videos registrados. Registra uno abajo o sube un archivo local.
+                            </div>
+                          ) : (
+                            songs.filter(s => s.isVideo).map((video) => {
+                              const isActive = state.activeVideoId === video.id;
+                              const isPreviewing = localPreviewVideoId === video.id;
+                              return (
+                                <div 
+                                  key={video.id} 
+                                  onClick={() => setLocalPreviewVideoId(video.id)}
+                                  className={`p-1.5 rounded flex items-center justify-between border transition-all cursor-pointer ${
+                                    isPreviewing 
+                                      ? 'bg-violet-955/40 border-violet-500/80 shadow shadow-violet-500/10' 
+                                      : isActive 
+                                        ? 'bg-emerald-955/20 border-emerald-500/50' 
+                                        : 'bg-zinc-900/60 border-zinc-850 hover:bg-zinc-850'
+                                  }`}
+                                >
+                                  <div className="flex flex-col min-w-0 pr-1 leading-tight">
+                                    <span className="text-[10px] font-bold text-zinc-200 truncate">{video.title}</span>
+                                    <span className="text-[7px] text-zinc-500 font-mono truncate">
+                                      {video.videoUrl?.startsWith('blob:') || video.videoUrl?.startsWith('db://') ? '📂 Archivo cargado' : '🌐 URL Externa'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                                    {isActive && (
+                                      <span className="text-[7px] font-black uppercase bg-emerald-950 text-emerald-400 px-1 py-0.2 rounded border border-emerald-900/40 font-sans">
+                                        VIVO
+                                      </span>
+                                    )}
+                                    {isPreviewing && !isActive && (
+                                      <span className="text-[7px] font-black uppercase bg-violet-950 text-violet-400 px-1 py-0.2 rounded border border-violet-900/40 font-sans">
+                                        PREVIEW
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteSong(video.id, e);
+                                        if (localPreviewVideoId === video.id) {
+                                          setLocalPreviewVideoId(null);
+                                        }
+                                      }}
+                                      className="p-1 hover:bg-red-955 text-red-500 hover:text-red-400 rounded transition cursor-pointer"
+                                      title="Eliminar"
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Registrar nuevo video inline form (replaces modal popup) */}
+                      <div className="bg-zinc-950 p-2 rounded border border-zinc-900 space-y-1.5">
+                        <span className="text-[8px] font-black text-violet-400 uppercase block">➕ REGISTRAR NUEVO VIDEO</span>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input
+                            type="text"
+                            placeholder="Nombre..."
+                            value={inputVideoName}
+                            onChange={(e) => setInputVideoName(e.target.value)}
+                            className="w-full text-[9px] px-2 py-1 bg-zinc-900 border border-zinc-850 rounded text-zinc-100 placeholder-zinc-620 focus:outline-none focus:border-violet-600 font-sans font-medium"
+                          />
+                          <input
+                            type="text"
+                            placeholder="URL .mp4 o vacío..."
+                            value={inputVideoUrl}
+                            onChange={(e) => setInputVideoUrl(e.target.value)}
+                            className="w-full text-[9px] px-2 py-1 bg-zinc-900 border border-zinc-850 rounded text-zinc-100 placeholder-zinc-650 focus:outline-none focus:border-violet-600 font-mono text-xs"
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex-grow bg-black/40 px-1.5 py-0.5 rounded border border-zinc-850 flex items-center justify-between text-[8px] text-zinc-400 min-w-0">
+                            <span className="truncate">Sube local:</span>
+                            <input
+                              type="file"
+                              accept="video/*"
+                              onChange={handleVideoSongUpload}
+                              className="w-[75px] text-[7.5px] text-zinc-500 file:border-0 file:bg-transparent file:text-[7.5px] file:text-violet-440 cursor-pointer focus:outline-none font-sans"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              if (!inputVideoName.trim()) return;
+                              handleAddVideoSongSubmit(e);
+                            }}
+                            className="py-1 px-2.5 bg-violet-750 hover:bg-violet-650 text-white rounded font-black text-[8px] uppercase transition cursor-pointer shrink-0 font-sans"
+                          >
+                            AÑADIR
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Column 2: Panel de Transporte */}
+                    <div className="space-y-2 flex flex-col justify-between">
+                      <div className="space-y-1 flex-grow flex flex-col justify-between">
+                        <span className="text-[8px] font-black text-zinc-400 uppercase block font-sans">
+                          2. REPRODUCTOR Y TRANSPORTE:
+                        </span>
+
+                        {localPreviewVideo ? (
+                          <div className="bg-zinc-950 p-2.5 rounded border border-zinc-900 space-y-2 flex-grow flex flex-col justify-between">
+                            <div className="flex justify-between items-center leading-tight">
+                              <span className="text-[9.5px] text-zinc-300 font-bold truncate max-w-[130px]" title={localPreviewVideo.title}>
+                                🎬 {localPreviewVideo.title}
+                              </span>
+                              {state.activeVideoId === localPreviewVideo.id ? (
+                                <span className="text-[7.5px] font-extrabold uppercase bg-emerald-950 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-900/40 font-sans">
+                                  🔴 TRANSMITIENDO
+                                </span>
+                              ) : (
+                                <span className="text-[7.5px] font-extrabold uppercase bg-zinc-900 text-zinc-450 px-1.5 py-0.2 rounded border border-zinc-800 font-sans">
+                                  👁️ VISTA LOCAL
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Local Video Tag Preview in subtab panel */}
+                            {resolvedLocalPreviewUrl ? (
+                              <div className="relative aspect-video w-full rounded overflow-hidden border border-zinc-850 bg-black flex items-center justify-center">
+                                <video
+                                  key={resolvedLocalPreviewUrl}
+                                  src={resolvedLocalPreviewUrl}
+                                  className="w-full h-full object-cover"
+                                  controls
+                                  autoPlay
+                                  muted
+                                  playsInline
+                                />
+                              </div>
+                            ) : (
+                              <div className="aspect-video w-full rounded overflow-hidden border border-zinc-850 bg-black/60 flex items-center justify-center text-[8px] text-zinc-600 italic animate-pulse font-sans">
+                                Cargando preview local...
+                              </div>
+                            )}
+
+                            {/* Project to Live Button */}
+                            <div className="space-y-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateState(prev => ({
+                                    ...prev,
+                                    activeSongId: localPreviewVideo.id,
+                                    activeSlideIndex: 0,
+                                    activeVideoId: localPreviewVideo.id,
+                                    activeVideoUrl: localPreviewVideo.videoUrl || null,
+                                    isVideoPlaying: true,
+                                    videoCurrentTime: 0,
+                                    isHideLetters: false
+                                  }));
+                                }}
+                                className={`w-full py-1.5 rounded text-[9px] font-black uppercase transition flex items-center justify-center gap-1 shadow-md border cursor-pointer ${
+                                  state.activeVideoId === localPreviewVideo.id
+                                    ? 'bg-emerald-600 border-emerald-500 hover:bg-emerald-550 text-white animate-pulse'
+                                    : 'bg-violet-750 border-violet-800 hover:bg-violet-650 text-white'
+                                }`}
+                              >
+                                {state.activeVideoId === localPreviewVideo.id ? '🎬 EN PROYCTOR (ACTIVO EN VIVO)' : '▶️ PROYECTAR EN VIVO'}
+                              </button>
+                            </div>
+
+                            {/* Timeline Slider with counter labels if projecting */}
+                            {state.activeVideoId === localPreviewVideo.id ? (
+                              <div className="border-t border-zinc-900 pt-1.5 space-y-1.5">
+                                <div className="flex justify-between text-[7.5px] font-mono text-zinc-550 leading-none">
+                                  <span>PROYECTOR: {formatDuration(state.videoCurrentTime || 0)}</span>
+                                  <span>{formatDuration(state.videoDuration || 0)}</span>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max={state.videoDuration || 100}
+                                  step="0.5"
+                                  value={state.videoCurrentTime || 0}
+                                  onChange={(e) => {
+                                    const val = parseFloat(e.target.value);
+                                    updateState(prev => ({ ...prev, videoCurrentTime: val }));
+                                  }}
+                                  className="w-full h-1 accent-violet-500 bg-zinc-850 rounded appearance-none cursor-pointer"
+                                />
+
+                                <div className="flex gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      updateState(prev => ({ ...prev, isVideoPlaying: !prev.isVideoPlaying }));
+                                    }}
+                                    className="flex-1 py-1 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 font-extrabold rounded text-[8px] font-sans border border-zinc-800 transition cursor-pointer"
+                                  >
+                                    {state.isVideoPlaying ? '⏸ PAUSA' : '▶ REPRODUCIR'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleUnloadSong}
+                                    className="flex-1 py-1 bg-red-955/35 hover:bg-red-950/60 text-red-400 font-extrabold rounded text-[8px] font-sans border border-red-900/40 transition cursor-pointer"
+                                  >
+                                    ⏹ DETENER VIDEO
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="bg-zinc-950 p-2 text-center text-[7.5px] text-zinc-550 rounded border border-zinc-900 mt-1 font-mono leading-normal">
+                                💡 El video se reproduce localmente para verificarlo. Presiona "PROYECTAR EN VIVO" para emitirlo a la pantalla principal y al proyector.
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="bg-zinc-950 p-6 rounded border border-zinc-900 border-dashed flex flex-col items-center justify-center text-center flex-grow">
+                            <Video className="w-6 h-6 text-zinc-700 mb-1.5 animate-pulse" />
+                            <span className="text-[8px] text-zinc-500 font-bold uppercase block font-sans">VISTA VACÍA</span>
+                            <p className="text-[7.5px] text-zinc-650 max-w-[170px] leading-relaxed mt-0.5 font-sans">
+                              Haz click sobre un video de la lista de la izquierda para reproducirlo localmente en esta pantalla de previsualización.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -3899,7 +4240,7 @@ export default function Controller() {
             </div>
 
             {/* PROJECTION CONNECTION & LAUNCH CONTROLS - PLACED DIRECTLY UNDER HEADLINE */}
-            <div className="select-none shrink-0">
+            <div className="select-none shrink-0 space-y-1.5">
               <button
                 type="button"
                 onClick={openProjectorWindow}
@@ -3912,13 +4253,15 @@ export default function Controller() {
             </div>
 
             {/* ROW A: CONSOLE SECTION SELECTORS (DYNAMIC COLUMN ROW BASED ON FEATURE TOGGLES) - PLACED BELOW LANZAR PROYECTOR */}
-            {([enabledFeatures.fondos, enabledFeatures.letra, enabledFeatures.leyenda].some(Boolean)) && (
+            {([enabledFeatures.fondos, enabledFeatures.letra, enabledFeatures.leyenda, enabledFeatures.videos].some(Boolean)) && (
               <div className={`grid ${
-                [enabledFeatures.fondos, enabledFeatures.letra, enabledFeatures.leyenda].filter(Boolean).length === 3 
-                  ? 'grid-cols-3' 
-                  : [enabledFeatures.fondos, enabledFeatures.letra, enabledFeatures.leyenda].filter(Boolean).length === 2 
-                    ? 'grid-cols-2' 
-                    : 'grid-cols-1'
+                [enabledFeatures.fondos, enabledFeatures.letra, enabledFeatures.leyenda, enabledFeatures.videos].filter(Boolean).length === 4
+                  ? 'grid-cols-4'
+                  : [enabledFeatures.fondos, enabledFeatures.letra, enabledFeatures.leyenda, enabledFeatures.videos].filter(Boolean).length === 3 
+                    ? 'grid-cols-3' 
+                    : [enabledFeatures.fondos, enabledFeatures.letra, enabledFeatures.leyenda, enabledFeatures.videos].filter(Boolean).length === 2 
+                      ? 'grid-cols-2' 
+                      : 'grid-cols-1'
               } gap-1 border border-zinc-900 bg-zinc-950/40 p-0.5 rounded select-none`}>
                 {enabledFeatures.fondos && (
                   <button
@@ -3954,6 +4297,18 @@ export default function Controller() {
                   >
                     <span className="text-xs">📺</span>
                     <span className="font-extrabold font-sans leading-none">Leyenda</span>
+                  </button>
+                )}
+                {enabledFeatures.videos && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveSubTab(prev => prev === 'videos' ? 'none' : 'videos')}
+                    className={`py-1 text-[8.5px] font-black uppercase tracking-tight rounded transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                      activeSubTab === 'videos' ? 'bg-violet-750 text-white shadow' : 'bg-transparent text-zinc-400 hover:text-zinc-200 lg:hover:bg-[#1a1a1c]'
+                    }`}
+                  >
+                    <span className="text-xs">🎬</span>
+                    <span className="font-extrabold font-sans leading-none">Video</span>
                   </button>
                 )}
               </div>
@@ -4290,6 +4645,25 @@ export default function Controller() {
                         }`}
                       >
                         {enabledFeatures.playlistDock2 ? 'Visible' : 'Bloqueado'}
+                      </button>
+                    </div>
+
+                    {/* Cámara Celular Recurso Toggle */}
+                    <div className="flex items-center justify-between p-2 bg-zinc-950 border border-zinc-900 rounded-lg">
+                      <div className="flex flex-col">
+                        <span className="text-[9.5px] font-black text-zinc-200 uppercase">🎦 Recurso de Cámara Celular en Consola</span>
+                        <span className="text-[8px] text-zinc-500">Muestra u oculta la herramienta de enlazado de Cámara de Baja Latencia</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEnabledFeatures(prev => ({ ...prev, camaracelular: !prev.camaracelular }))}
+                        className={`px-3 py-1 text-[8.5px] font-bold tracking-wider rounded uppercase border transition duration-155 cursor-pointer ${
+                          enabledFeatures.camaracelular 
+                            ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/50' 
+                            : 'bg-red-955/40 text-red-400 border-red-900/50'
+                        }`}
+                      >
+                        {enabledFeatures.camaracelular ? 'Visible' : 'Bloqueado'}
                       </button>
                     </div>
                   </div>
@@ -5068,7 +5442,7 @@ Mi corazón entona la canción
                   value={inputVideoName}
                   onChange={(e) => setInputVideoName(e.target.value)}
                   placeholder="Ej. Fondo Alabanza Lenta"
-                  className="w-full text-xs px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-600"
+                  className="w-full text-xs px-3 py-1.5 bg-zinc-950 border border-indigo-650 rounded text-zinc-100 placeholder-zinc-700 focus:outline-none focus:border-indigo-600"
                 />
               </div>
 
@@ -5098,13 +5472,13 @@ Mi corazón entona la canción
                 <button
                   type="button"
                   onClick={() => setIsAddingVideo(false)}
-                  className="flex-1 py-1.5 text-xs font-bold bg-[#2b2b2f] hover:bg-[#3d3d44] text-zinc-300 rounded border border-[#3e3e44] transition"
+                  className="flex-1 py-1.5 text-xs font-bold bg-[#2b2b2f] hover:bg-[#3d3d44] text-zinc-300 rounded border border-[#3e3e44] transition cursor-pointer"
                 >
                   CANCELAR
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-1.5 text-xs font-extrabold bg-violet-700 hover:bg-violet-650 text-white rounded border border-violet-800 transition flex items-center justify-center gap-1 animate-pulse"
+                  className="flex-1 py-1.5 text-xs font-extrabold bg-violet-700 hover:bg-violet-650 text-white rounded border border-violet-800 transition flex items-center justify-center gap-1 animate-pulse cursor-pointer"
                 >
                   <Check className="w-3.5 h-3.5" />
                   REGISTRAR VIDEO
@@ -5114,8 +5488,6 @@ Mi corazón entona la canción
           </div>
         </div>
       )}
-
-
 
       </div>
 

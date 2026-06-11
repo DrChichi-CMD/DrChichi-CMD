@@ -268,10 +268,28 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    // Highly robust and battle-tested resolving for both local development and cloud production containers
+    const distPath = path.resolve(process.cwd(), 'dist');
+    console.log(`[INFO] Server configured in production. Static assets base: ${distPath}`);
+    
     app.use(express.static(distPath));
+    
     app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+      const targetIndex = path.join(distPath, 'index.html');
+      res.sendFile(targetIndex, (err) => {
+        if (err) {
+          console.warn(`[WARN] Standard dist file send failed at ${targetIndex}:`, err);
+          // Try fallback relative to executable __dirname inside dist/
+          const fallbackIndex = path.resolve(__dirname, 'index.html');
+          console.log(`[INFO] Attempting fallback index.html resolving from __dirname: ${fallbackIndex}`);
+          res.sendFile(fallbackIndex, (fallbackErr) => {
+            if (fallbackErr) {
+              console.error(`[ERROR] Double fallback failed. Could not load index.html!`, fallbackErr);
+              res.status(404).send("Error: Page not found. Please verify the build directory or rebuild the application.");
+            }
+          });
+        }
+      });
     });
   }
 
