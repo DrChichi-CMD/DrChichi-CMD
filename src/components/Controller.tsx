@@ -619,9 +619,9 @@ export default function Controller() {
     try {
       const saved = localStorage.getItem('enabledFeatures');
       const parsed = saved ? JSON.parse(saved) : null;
-      // Force videos to be false even if previously saved as true
       if (parsed) {
-        parsed.videos = false;
+        // Ensure videos is defined
+        if (parsed.videos === undefined) parsed.videos = false;
         return parsed;
       }
       return {
@@ -720,14 +720,16 @@ export default function Controller() {
     lyricsPatch: true
   });
 
-  const [driveFiles, setDriveFiles] = useState<{ name: string; download_url: string; size?: number }[]>([]);
+  const [driveFiles, setDriveFiles] = useState<{ name: string; download_url: string; version: string; size?: number }[]>([]);
   const [isLoadingDrive, setIsLoadingDrive] = useState(false);
   const [selectedZipUrl, setSelectedZipUrl] = useState('');
   const [driveError, setDriveError] = useState<string | null>(null);
+  const [hasSearchedDrive, setHasSearchedDrive] = useState(false);
 
   const fetchDriveFiles = async () => {
     setIsLoadingDrive(true);
     setDriveError(null);
+    setHasSearchedDrive(true);
     try {
       // Simulate/Trigger connection check to Drive API host (safely handled matching CORS availability)
       await fetch('https://www.google.com', { mode: 'no-cors' }).catch(() => {});
@@ -736,16 +738,19 @@ export default function Controller() {
         {
           name: "Actualización Estilo Argentino Completa (v1.0.3-Stable.zip)",
           download_url: "https://raw.githubusercontent.com/DrChichi-CMD/Actualizacion/main/actualizacion_v1.0.2_estilo_arg.zip",
+          version: "v1.0.3-Stable",
           size: 820000
         },
         {
           name: "Parche Litúrgico y Clima Regional (parche_liturgico_v1.0.2.zip)",
           download_url: "https://raw.githubusercontent.com/DrChichi-CMD/Actualizacion/main/parche_liturgico_v1.0.2.zip",
+          version: "v1.0.2-Stable",
           size: 450000
         },
         {
           name: "Colección de Alabanzas Especiales (canciones_v1.0.2.zip)",
           download_url: "https://github.com/DrChichi-CMD/Actualizacion/archive/refs/heads/main.zip",
+          version: "v1.0.2-Stable",
           size: 154000
         }
       ];
@@ -758,11 +763,13 @@ export default function Controller() {
         {
           name: "Actualización Estilo Argentino Completa (v1.0.3-Stable.zip)",
           download_url: "https://raw.githubusercontent.com/DrChichi-CMD/Actualizacion/main/actualizacion_v1.0.2_estilo_arg.zip",
+          version: "v1.0.3-Stable",
           size: 820000
         },
         {
           name: "Parche Litúrgico y Clima Regional (parche_liturgico_v1.0.2.zip)",
           download_url: "https://raw.githubusercontent.com/DrChichi-CMD/Actualizacion/main/parche_liturgico_v1.0.2.zip",
+          version: "v1.0.2-Stable",
           size: 450000
         }
       ];
@@ -772,11 +779,6 @@ export default function Controller() {
       setIsLoadingDrive(false);
     }
   };
-
-  // Run on mount to automatically look up packages from Drive folder
-  useEffect(() => {
-    fetchDriveFiles();
-  }, []);
 
   // Save changes automatically
   useEffect(() => {
@@ -1135,9 +1137,16 @@ export default function Controller() {
       alert("⚠️ Por favor, selecciona un fichero de actualización válido.");
       return;
     }
+    const selectedObj = driveFiles.find(z => z.download_url === url);
+    const selectedVersion = selectedObj ? selectedObj.version : "v1.0.2-Stable";
+
+    if (selectedObj && selectedVersion.toLowerCase() === swVersion.toLowerCase()) {
+      alert(`✨ Esta aplicación ya se encuentra actualizada a su última versión (${swVersion}).`);
+      return;
+    }
+
     setIsUpdating(true);
     setUpdateProgress(10);
-    const selectedObj = driveFiles.find(z => z.download_url === url);
     const selectedName = selectedObj ? selectedObj.name : "actualizacion_drive.zip";
     setUpdateFileName(selectedName);
     
@@ -1232,8 +1241,8 @@ export default function Controller() {
 
             setIsUpdating(false);
             setPendingUpdateFile(null);
-            setSwVersion('v1.0.2-Stable');
-            localStorage.setItem('swVersion', 'v1.0.2-Stable');
+            setSwVersion(selectedVersion);
+            localStorage.setItem('swVersion', selectedVersion);
 
             setUpdateLogs(prev => [...prev, '🔄 Reiniciando aplicación en 2 segundos para aplicar características en caliente...']);
             setTimeout(() => {
@@ -1293,8 +1302,8 @@ export default function Controller() {
 
               setIsUpdating(false);
               setPendingUpdateFile(null);
-              setSwVersion('v1.0.2-Stable');
-              localStorage.setItem('swVersion', 'v1.0.2-Stable');
+              setSwVersion(selectedVersion);
+              localStorage.setItem('swVersion', selectedVersion);
 
               setUpdateLogs(prev => [...prev, '🔄 Reiniciando aplicación en 2 segundos para aplicar cambios...']);
               setTimeout(() => {
@@ -2825,7 +2834,7 @@ export default function Controller() {
 
             {/* Quick Add Buttons */}
             {!isAddingSong && (
-              <div className="flex gap-2 mt-2 shrink-0 select-none w-full">
+              <div className="flex flex-col gap-1.5 mt-2 shrink-0 select-none w-full border-t border-zinc-900/40 pt-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -2839,6 +2848,20 @@ export default function Controller() {
                 >
                   <Plus className="w-2.5 h-2.5" /> AÑADIR NUEVA CANCIÓN
                 </button>
+
+                {enabledFeatures.videos && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setInputVideoName('');
+                      setInputVideoUrl('');
+                      setIsAddingVideo(true);
+                    }}
+                    className="py-1 w-full flex items-center justify-center gap-1 rounded bg-violet-750 hover:bg-violet-650 text-white font-extrabold text-[9px] font-sans border border-violet-850 transition active:scale-95 cursor-pointer"
+                  >
+                    <Video className="w-2.5 h-2.5" /> AÑADIR NUEVO VIDEO (.MP4)
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -4198,7 +4221,7 @@ export default function Controller() {
                     <div className="flex items-center justify-between p-2 bg-zinc-950 border border-zinc-900 rounded-lg">
                       <div className="flex flex-col">
                         <span className="text-[9.5px] font-black text-zinc-200 uppercase">📺 Botón Generador de Leyenda</span>
-                        <span className="text-[8px] text-zinc-500">Muestra u oculta el cintillo informativo/ticker inferior</span>
+                        <span className="text-[8px] text-zinc-505">Muestra u oculta el cintillo informativo/ticker inferior</span>
                       </div>
                       <button
                         type="button"
@@ -4210,6 +4233,25 @@ export default function Controller() {
                         }`}
                       >
                         {enabledFeatures.leyenda ? 'Visible' : 'Bloqueado'}
+                      </button>
+                    </div>
+
+                    {/* Módulo de Videos Toggle */}
+                    <div className="flex items-center justify-between p-2 bg-zinc-950 border border-zinc-900 rounded-lg">
+                      <div className="flex flex-col">
+                        <span className="text-[9.5px] font-black text-zinc-200 uppercase">🎬 Módulo de Videos en Biblioteca</span>
+                        <span className="text-[8px] text-zinc-555">Habilita el botón para subir e integrar videos interactivos en biblioteca</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEnabledFeatures(prev => ({ ...prev, videos: !prev.videos }))}
+                        className={`px-3 py-1 text-[8.5px] font-bold tracking-wider rounded uppercase border transition duration-155 cursor-pointer ${
+                          enabledFeatures.videos 
+                            ? 'bg-emerald-950/40 text-emerald-400 border-emerald-900/50' 
+                            : 'bg-red-955/40 text-red-400 border-red-900/50'
+                        }`}
+                      >
+                        {enabledFeatures.videos ? 'Visible' : 'Bloqueado'}
                       </button>
                     </div>
 
@@ -4424,18 +4466,31 @@ export default function Controller() {
                                 </a>
                               </p>
 
-                              {isLoadingDrive ? (
+                              {!hasSearchedDrive && !isLoadingDrive ? (
+                                <div className="space-y-2 py-1 text-center">
+                                  <p className="text-[8px] text-zinc-400 font-sans">
+                                    Haz clic abajo para buscar de forma remota las versiones disponibles en Drive.
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={fetchDriveFiles}
+                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 border border-indigo-750 rounded text-[9.5px] font-black uppercase text-zinc-100 shadow hover:shadow-indigo-500/15 transition active:scale-95 duration-100 cursor-pointer flex items-center justify-center gap-1 font-sans"
+                                  >
+                                    🔍 BUSCAR VERSIONES DISPONIBLES EN DRIVE
+                                  </button>
+                                </div>
+                              ) : isLoadingDrive ? (
                                 <div className="p-3 bg-black/40 rounded border border-zinc-900 text-center space-y-1.5">
                                   <div className="w-4 h-4 border-2 border-t-transparent border-indigo-500 rounded-full animate-spin mx-auto" />
                                   <span className="text-[8px] font-mono font-bold text-zinc-500 block uppercase tracking-wide">
-                                    Conectando con Google Drive y buscando actualizaciones...
+                                    Conectando con Google Drive y buscando versiones...
                                   </span>
                                 </div>
                               ) : (
                                 <div className="space-y-2">
                                   <div className="space-y-1 leading-tight">
                                     <label className="text-[7.5px] font-black text-zinc-450 uppercase block">
-                                      Actualizaciones Disponibles en Drive (.ZIP):
+                                      Versiones Encontradas en Drive:
                                     </label>
                                     
                                     <div className="flex gap-1.5">
@@ -4446,7 +4501,7 @@ export default function Controller() {
                                       >
                                         {driveFiles.map((zip, index) => (
                                           <option key={index} value={zip.download_url}>
-                                            {zip.name} {zip.size ? `(${(zip.size / 1024).toFixed(1)} KB)` : ''}
+                                            [{zip.version}] {zip.name} {zip.size ? `(${(zip.size / 1024).toFixed(1)} KB)` : ''}
                                           </option>
                                         ))}
                                       </select>
@@ -4464,7 +4519,7 @@ export default function Controller() {
 
                                   {driveError && (
                                     <div className="p-2 bg-amber-950/20 border border-amber-900/30 rounded text-[7.5px] text-amber-500 leading-normal">
-                                      💡 Nota: Se cargó la base segura de contingencia de Google Drive. Podrás continuar con la instalación en caliente presionando el botón verde de abajo.
+                                      💡 Nota: Se cargó la base segura de contingencia de Google Drive. Podrás continuar con la instalación en caliente seleccionando la versión arriba y presionando el botón de abajo.
                                     </div>
                                   )}
 
@@ -4473,7 +4528,7 @@ export default function Controller() {
                                     onClick={() => handleDownloadAndInstallZip(selectedZipUrl)}
                                     className="w-full py-2 bg-gradient-to-r from-emerald-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 border border-emerald-500/20 rounded text-xs font-black uppercase text-white shadow hover:shadow-emerald-500/15 transition-all duration-150 cursor-pointer text-center select-none flex items-center justify-center gap-1.5 focus:outline-none font-sans"
                                   >
-                                    ⚡ DESCARGAR E INSTALAR ACTUALIZACIÓN (.ZIP)
+                                    ⚡ DESCARGAR E INSTALAR LA VERSIÓN MARCADA (.ZIP)
                                   </button>
                                 </div>
                               )}
